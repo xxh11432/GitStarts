@@ -1,0 +1,38 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: github-stars-backend
+  datasource:
+    url: jdbc:mysql://localhost:3306/githubstars?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: githubstars
+    password: githubstarspass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: redispass
+  jackson:
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+github:
+  api-base: https://api.github.com
+  token: ${GITHUB_TOKEN:}
+  sync-enabled: ${SYNC_ENABLED:true}
+
+logging:
+  level:
+    com.githubstars: info
