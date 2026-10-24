@@ -157,6 +157,19 @@ CREATE TABLE IF NOT EXISTS comparisons (
     UNIQUE KEY uk_share (share_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 收藏（M6）：用户收藏仓库与备注，按 user_id 隔离
+CREATE TABLE IF NOT EXISTS favorites (
+    id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id    BIGINT NOT NULL,
+    repo_id    BIGINT NOT NULL,
+    full_name  VARCHAR(255) NOT NULL,
+    note       VARCHAR(500),
+    created_at DATETIME,
+    updated_at DATETIME,
+    UNIQUE KEY uk_user_repo (user_id, repo_id),
+    KEY idx_user (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 每日用量（配额以 Redis 原子扣减为准，这张表用于成本统计）
 CREATE TABLE IF NOT EXISTS usage_daily (
     user_id       BIGINT NOT NULL,

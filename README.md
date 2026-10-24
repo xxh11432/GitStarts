@@ -86,6 +86,7 @@ fit = 0.45 × 语义相关
 - **M3 AI 对话 MVP**：`/ai/chat/stream` SSE 流式（`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error`）、工具调用（`search_repos` / `get_repo` / `get_rank`）、首页对话与仓库卡、会话与消息异步落库
 - **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → fastembed embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 硬过滤 → 向量召回 + 关键词补充 → LLM 重排 ±0.1 → 四维契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 `recall@10` 报告脚本
 - **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
+- **M6 个性化沉淀**：收藏与备注（`favorites`，跨会话一致）；`/me` 完整化（配额、想法、对比、收藏、会话入口）；对比历史 / 想法 / 会话历史的列表与详情；技能 / 兴趣 / 偏好画像与规则推荐位；对比分享链接可撤销、记录可删除；账号删除时清理全部个人数据
 
 **规划中（AI 升级）**
 
@@ -97,7 +98,7 @@ fit = 0.45 × 语义相关
 | M3 | AI 网关与对话 MVP：SSE 流式、工具调用（`search_repos` / `get_repo` / `get_rank`） | 已完成 |
 | M4 | 语义索引与匹配：README 分块 embedding、召回重排、`/ai/match` | 已完成 |
 | M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 已完成 |
-| M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 待启动 |
+| M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 已完成 |
 | M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 待启动 |
 
 ## 架构
@@ -174,6 +175,9 @@ docker compose up -d --build
 
 首次 `--build` 会预热 embedding 模型（约 2 GB），构建较慢；可设 `PREWARM_MODELS=false` 跳过，模型改在首次请求时下载。
 
+> 从 M5 升级到 M6 时，已有数据库需补 `favorites` 表（新库由 `deploy/init.sql` 直接创建，无需执行）：
+> 重跑 `deploy/init.sql` 即可（全部为 `CREATE TABLE IF NOT EXISTS`）。
+>
 > 从 M4 升级到 M5 时，已有数据库需补 `comparisons` 表（新库由 `deploy/init.sql` 直接创建，无需执行）：
 > 重跑 `deploy/init.sql` 即可（全部为 `CREATE TABLE IF NOT EXISTS`）。
 >
@@ -309,7 +313,21 @@ GitStarts/
 | GET | `/api/comparisons` | 我的对比历史（分页） |
 | GET | `/api/comparisons/{id}` | 对比详情（仅本人） |
 | POST | `/api/comparisons/{id}/share` | 生成（或复用）只读分享 token（仅本人，需 CSRF） |
+| POST | `/api/comparisons/{id}/share/revoke` | 撤销只读分享，旧链接立即失效（仅本人，需 CSRF） |
+| DELETE | `/api/comparisons/{id}` | 删除本人的对比记录（需 CSRF） |
 | GET | `/api/comparisons/share/{token}` | 只读分享内容，无需登录 |
+| GET | `/api/favorites` | 我的收藏分页列表（含仓库卡与备注） |
+| POST | `/api/favorites` | 收藏仓库，支持备注（需 CSRF） |
+| GET | `/api/favorites/status?fullName=` | 查询单个仓库是否已收藏 |
+| PATCH | `/api/favorites/{id}` | 修改收藏备注（仅本人，需 CSRF） |
+| DELETE | `/api/favorites/{id}` | 取消收藏（仅本人，需 CSRF） |
+| GET | `/api/profile` | 我的技能 / 兴趣 / 偏好画像 |
+| PUT | `/api/profile` | 更新画像（仅本人，需 CSRF） |
+| GET | `/api/profile/recommendations?limit=` | 基于画像的推荐位（排除已收藏） |
+| GET | `/api/conversations` | 我的会话历史分页列表 |
+| GET | `/api/conversations/{id}` | 会话详情与消息（仅本人） |
+| DELETE | `/api/conversations/{id}` | 删除会话与消息（仅本人，需 CSRF） |
+| DELETE | `/api/account` | 删除账号并清理收藏 / 想法 / 对比 / 会话 / 画像 / 用量（需 CSRF） |
 | GET | `/api/health` | 健康检查 |
 | GET | `/ai/health` | AI 网关健康检查（含 Qdrant 连通性，始终 200） |
 | POST | `/ai/chat/stream` | AI 对话 SSE（需登录，`X-User-Id` 由 Nginx 透传）：`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error` |
@@ -322,11 +340,11 @@ GitStarts/
 
 服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`、`GET /api/internal/repos/search`、`GET /api/internal/repos/rank`、`GET /api/internal/repos/{fullName}`、`POST /api/internal/repos/batch`、`GET /api/internal/index/repos`、`POST /api/internal/repo-documents`、`POST /api/internal/index/mark`、`POST /api/internal/conversations`、`POST /api/internal/messages`、`GET|POST|PATCH /api/internal/ideas*`、`POST /api/internal/comparisons`、`GET /api/internal/auth/session`。
 
-规划接口：`/api/favorites`。服务间接口统一收在 `/api/internal/`，Nginx 对外直接返回 404。
+个人中心页面：`/me`（配额、画像、推荐位与资产总览）、`/me/favorites`、`/me/ideas`、`/me/comparisons`、`/me/comparisons/{id}`、`/me/conversations`、`/me/conversations/{id}`。
 
 ## 数据与索引
 
-- **MySQL**：`repositories`（仓库主表，含 `category`、`platform`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `users` / `conversations` / `messages` / `usage_daily`。
+- **MySQL**：`repositories`（仓库主表，含 `category`、`platform`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `favorites`（收藏与备注，唯一键 `user_id + repo_id`）+ `users` / `conversations` / `messages` / `usage_daily` / `user_profiles`。
 - **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。
 - **缓存**：匹配结果 10 分钟、对比结果 7 天、对比 checkpoint 1 小时、榜单与元数据 5 分钟；索引 worker 用 Redis 锁 + 游标实现断点续跑。
 - **评测**：`llm-service/tests/eval/dataset.jsonl`（24 条需求）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；`python -m tests.eval.run_eval` / `run_compare_eval` 分别生成匹配与对比报告。

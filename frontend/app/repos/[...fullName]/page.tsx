@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import FavoriteButton from '@/components/FavoriteButton';
 import RepoCard from '@/components/RepoCard';
-import { fetchRepo, fetchRepoSummary, fetchSimilarRepos } from '@/lib/api';
+import { fetchFavoriteStatus, fetchMe, fetchRepo, fetchRepoSummary, fetchSimilarRepos } from '@/lib/api';
 import { platformLabel } from '@/lib/labels';
 import type { ReadmeSummary, Repo } from '@/lib/types';
 
@@ -21,9 +22,11 @@ export default async function RepoDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [readme, similar] = await Promise.all([
+  const [readme, similar, me, favorite] = await Promise.all([
     fetchRepoSummary(fullName).catch(() => null as ReadmeSummary | null),
     fetchSimilarRepos(fullName, 6).catch(() => [] as Repo[]),
+    fetchMe(),
+    fetchFavoriteStatus(fullName),
   ]);
 
   const updatedAt = formatDate(repo.pushedAt);
@@ -77,7 +80,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <a
             href={`https://github.com/${repo.fullName}`}
             target="_blank"
@@ -96,6 +99,12 @@ export default async function RepoDetailPage({ params }: PageProps) {
               项目主页
             </a>
           )}
+          <FavoriteButton
+            fullName={repo.fullName}
+            authenticated={Boolean(me)}
+            initialFavorited={Boolean(favorite?.favorited)}
+            initialId={favorite?.id}
+          />
         </div>
       </article>
 

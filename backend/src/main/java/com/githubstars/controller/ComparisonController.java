@@ -7,6 +7,7 @@ import com.githubstars.dto.PageResult;
 import com.githubstars.security.OAuth2UserPrincipal;
 import com.githubstars.service.ComparisonService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,6 +47,20 @@ public class ComparisonController {
     public Map<String, Object> share(@AuthenticationPrincipal OAuth2UserPrincipal principal,
                                      @PathVariable Long id) {
         return Map.of("token", comparisonService.share(id, principal.getUserId()));
+    }
+
+    @PostMapping("/{id}/share/revoke")
+    public Map<String, Object> revokeShare(@AuthenticationPrincipal OAuth2UserPrincipal principal,
+                                           @PathVariable Long id) {
+        comparisonService.revokeShare(id, principal.getUserId());
+        return Map.of("ok", true);
+    }
+
+    @DeleteMapping("/{id}")
+    public Map<String, Object> delete(@AuthenticationPrincipal OAuth2UserPrincipal principal,
+                                      @PathVariable Long id) {
+        comparisonService.delete(id, principal.getUserId());
+        return Map.of("ok", true);
     }
 
     @GetMapping("/share/{token}")

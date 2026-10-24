@@ -61,7 +61,9 @@ public class SecurityConfig {
                                 "/oauth2/**", "/login/**", "/comparisons/share/**").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/auth/me", "/auth/logout", "/quota", "/ideas/**",
-                                "/comparisons/**").authenticated()
+                                "/comparisons/**", "/favorites", "/favorites/**",
+                                "/conversations", "/conversations/**",
+                                "/profile", "/profile/**", "/account").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth -> oauth
                         .redirectionEndpoint(endpoint -> endpoint.baseUri("/auth/github/callback"))

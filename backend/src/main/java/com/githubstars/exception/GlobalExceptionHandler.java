@@ -27,6 +27,16 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
+    @ExceptionHandler(FavoriteNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleFavoriteNotFound(FavoriteNotFoundException e) {
+        return build(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(ConversationNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleConversationNotFound(ConversationNotFoundException e) {
+        return build(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException e) {
         return build(HttpStatus.BAD_REQUEST, e.getMessage());

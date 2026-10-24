@@ -91,6 +91,11 @@ public class QuotaService {
         };
     }
 
+    /** 账号删除时清理当天的配额计数。 */
+    public void clear(Long userId) {
+        redis.delete(List.of(key(userId, QuotaKind.CHAT), key(userId, QuotaKind.COMPARE)));
+    }
+
     private void recordUsage(Long userId, QuotaKind kind) {
         try {
             LocalDate today = LocalDate.now(ZONE);

@@ -7,5 +7,6 @@ public record ComparisonSummary(
         Long id,
         List<String> repoKeys,
         String schemaVersion,
+        boolean shared,
         LocalDateTime createdAt) {
 }

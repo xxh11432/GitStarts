@@ -1,16 +1,29 @@
 package com.githubstars.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.githubstars.dto.ConversationCreateRequest;
+import com.githubstars.dto.ConversationDetail;
+import com.githubstars.dto.ConversationSummary;
 import com.githubstars.dto.MessageCreateRequest;
+import com.githubstars.dto.MessageView;
+import com.githubstars.dto.PageResult;
 import com.githubstars.entity.Conversation;
 import com.githubstars.entity.Message;
+import com.githubstars.exception.ConversationNotFoundException;
 import com.githubstars.mapper.ConversationMapper;
 import com.githubstars.mapper.MessageMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 会话与消息落库：由 llm-service 通过内部接口写入，业务侧只做持久化。
@@ -68,6 +81,96 @@ public class ConversationService {
         messageMapper.insert(message);
         conversationMapper.touch(request.conversationId(), now);
         return message.getId();
+    }
+
+    public PageResult<ConversationSummary> list(Long userId, int page, int size) {
+        int current = Math.max(page, 1);
+        int pageSize = Math.min(Math.max(size, 1), 50);
+        Page<Conversation> result = conversationMapper.selectPage(new Page<>(current, pageSize),
+                new LambdaQueryWrapper<Conversation>()
+                        .eq(Conversation::getUserId, userId)
+                        .orderByDesc(Conversation::getUpdatedAt));
+
+        List<Long> ids = result.getRecords().stream().map(Conversation::getId).toList();
+        Map<Long, Long> counts = messageCounts(ids);
+        List<ConversationSummary> items = result.getRecords().stream()
+                .map(conversation -> toSummary(conversation, counts.getOrDefault(conversation.getId(), 0L)))
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotal(), current, pageSize);
+    }
+
+    public ConversationDetail get(Long userId, Long id) {
+        Conversation conversation = find(userId, id);
+        List<Message> messages = messageMapper.selectList(new LambdaQueryWrapper<Message>()
+                .eq(Message::getConversationId, id)
+                .orderByAsc(Message::getId));
+        List<MessageView> views = messages.stream()
+                .map(message -> new MessageView(message.getId(), message.getRole(), message.getContent(),
+                        parseJson(message.getRefs()), message.getCreatedAt()))
+                .collect(Collectors.toList());
+        return new ConversationDetail(toSummary(conversation, views.size()), views);
+    }
+
+    public void delete(Long userId, Long id) {
+        find(userId, id);
+        messageMapper.delete(new LambdaQueryWrapper<Message>().eq(Message::getConversationId, id));
+        conversationMapper.deleteById(id);
+    }
+
+    /** 账号删除时清理该用户的全部会话与消息。 */
+    public void deleteAllByUser(Long userId) {
+        List<Long> ids = conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
+                        .eq(Conversation::getUserId, userId))
+                .stream()
+                .map(Conversation::getId)
+                .toList();
+        if (!ids.isEmpty()) {
+            messageMapper.delete(new LambdaQueryWrapper<Message>().in(Message::getConversationId, ids));
+        }
+        conversationMapper.delete(new LambdaQueryWrapper<Conversation>().eq(Conversation::getUserId, userId));
+    }
+
+    private Conversation find(Long userId, Long id) {
+        Conversation conversation = conversationMapper.selectById(id);
+        if (conversation == null || !userId.equals(conversation.getUserId())) {
+            throw new ConversationNotFoundException("会话不存在或无权访问");
+        }
+        return conversation;
+    }
+
+    private Map<Long, Long> messageCounts(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        QueryWrapper<Message> wrapper = new QueryWrapper<>();
+        wrapper.select("conversation_id AS conversation_id", "COUNT(*) AS cnt")
+                .in("conversation_id", ids)
+                .groupBy("conversation_id");
+        Map<Long, Long> counts = new HashMap<>();
+        for (Map<String, Object> row : messageMapper.selectMaps(wrapper)) {
+            Object id = row.containsKey("conversation_id") ? row.get("conversation_id") : row.get("conversationId");
+            Object count = row.containsKey("cnt") ? row.get("cnt") : row.get("CNT");
+            if (id instanceof Number idNumber && count instanceof Number countNumber) {
+                counts.put(idNumber.longValue(), countNumber.longValue());
+            }
+        }
+        return counts;
+    }
+
+    private ConversationSummary toSummary(Conversation conversation, long messageCount) {
+        return new ConversationSummary(conversation.getId(), conversation.getTitle(), conversation.getMode(),
+                conversation.getIdeaId(), messageCount, conversation.getCreatedAt(), conversation.getUpdatedAt());
+    }
+
+    private JsonNode parseJson(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(value);
+        } catch (JsonProcessingException e) {
+            return null;
+        }
     }
 
     private String toJson(Object value) {

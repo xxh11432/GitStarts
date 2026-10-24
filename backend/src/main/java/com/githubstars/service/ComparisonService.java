@@ -1,6 +1,7 @@
 package com.githubstars.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -86,7 +87,7 @@ public class ComparisonService {
                         .orderByDesc(Comparison::getId));
         List<ComparisonSummary> items = result.getRecords().stream()
                 .map(comparison -> new ComparisonSummary(comparison.getId(), splitRepoKeys(comparison),
-                        comparison.getSchemaVersion(), comparison.getCreatedAt()))
+                        comparison.getSchemaVersion(), hasShare(comparison), comparison.getCreatedAt()))
                 .collect(Collectors.toList());
         return new PageResult<>(items, result.getTotal(), current, pageSize);
     }
@@ -110,6 +111,32 @@ public class ComparisonService {
         patch.setShareToken(token);
         comparisonMapper.updateById(patch);
         return token;
+    }
+
+    /**
+     * 撤销只读分享：清空 token 后旧链接立即失效，再次分享会生成新 token。
+     */
+    public void revokeShare(Long id, Long userId) {
+        Comparison comparison = comparisonMapper.selectById(id);
+        if (comparison == null || !userId.equals(comparison.getUserId())) {
+            throw new ComparisonNotFoundException("对比不存在或无权访问");
+        }
+        comparisonMapper.update(null, new LambdaUpdateWrapper<Comparison>()
+                .eq(Comparison::getId, id)
+                .setSql("share_token = NULL"));
+    }
+
+    public void delete(Long id, Long userId) {
+        Comparison comparison = comparisonMapper.selectById(id);
+        if (comparison == null || !userId.equals(comparison.getUserId())) {
+            throw new ComparisonNotFoundException("对比不存在或无权访问");
+        }
+        comparisonMapper.deleteById(id);
+    }
+
+    /** 账号删除时清理该用户的全部对比记录。 */
+    public void deleteAllByUser(Long userId) {
+        comparisonMapper.delete(new LambdaQueryWrapper<Comparison>().eq(Comparison::getUserId, userId));
     }
 
     public ComparisonShareResponse getByShare(String token) {
@@ -141,6 +168,10 @@ public class ComparisonService {
                 .distinct()
                 .limit(4)
                 .toList();
+    }
+
+    private boolean hasShare(Comparison comparison) {
+        return comparison.getShareToken() != null && !comparison.getShareToken().isBlank();
     }
 
     private List<String> splitRepoKeys(Comparison comparison) {

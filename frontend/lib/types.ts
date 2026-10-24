@@ -62,3 +62,62 @@ export interface Me {
   avatarUrl?: string;
   quota: Quota;
 }
+
+export interface IdeaView {
+  id: number;
+  title?: string;
+  rawText: string;
+  structured: Record<string, unknown>;
+  revision: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FavoriteView {
+  id: number;
+  repo: Repo;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FavoriteStatus {
+  favorited: boolean;
+  id?: number;
+  note?: string;
+}
+
+export interface Profile {
+  skills: string[];
+  interests: string[];
+  preferences: string[];
+  updatedAt?: string;
+}
+
+export interface Recommendation {
+  repo: Repo;
+  reasons: string[];
+}
+
+export interface ConversationSummary {
+  id: number;
+  title?: string;
+  mode: string;
+  ideaId?: number;
+  messageCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MessageView {
+  id: number;
+  role: string;
+  content?: string;
+  refs?: unknown;
+  createdAt?: string;
+}
+
+export interface ConversationDetail {
+  conversation: ConversationSummary;
+  messages: MessageView[];
+}

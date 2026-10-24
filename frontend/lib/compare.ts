@@ -49,6 +49,24 @@ export interface ComparePlan {
   cached: boolean;
 }
 
+export interface ComparisonSummary {
+  id: number;
+  repoKeys: string[];
+  schemaVersion: string;
+  shared: boolean;
+  createdAt?: string;
+}
+
+export interface ComparisonDetail {
+  id: number;
+  ideaId?: number;
+  repoKeys: string[];
+  schemaVersion: string;
+  result: CompareResultView;
+  shareToken?: string;
+  createdAt?: string;
+}
+
 export interface CompareDone {
   comparisonId?: number | null;
   cached: boolean;
