@@ -18,6 +18,7 @@ import com.githubstars.exception.ConversationNotFoundException;
 import com.githubstars.mapper.ConversationMapper;
 import com.githubstars.mapper.MessageMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -65,12 +66,17 @@ public class ConversationService {
         if (request.conversationId() == null) {
             throw new IllegalArgumentException("conversationId 必填");
         }
+        if (request.userId() == null) {
+            throw new IllegalArgumentException("userId 必填");
+        }
         if (request.role() == null || request.role().isBlank()) {
             throw new IllegalArgumentException("role 必填");
         }
+        // 会话归属校验：避免客户端传入他人 conversationId 造成消息注入
+        Conversation conversation = find(request.userId(), request.conversationId());
         LocalDateTime now = LocalDateTime.now();
         Message message = new Message();
-        message.setConversationId(request.conversationId());
+        message.setConversationId(conversation.getId());
         message.setRole(request.role());
         message.setContent(request.content());
         message.setToolTrace(toJson(request.toolTrace()));
@@ -79,7 +85,7 @@ public class ConversationService {
         message.setTokensOut(request.tokensOut());
         message.setCreatedAt(now);
         messageMapper.insert(message);
-        conversationMapper.touch(request.conversationId(), now);
+        conversationMapper.touch(conversation.getId(), now);
         return message.getId();
     }
 
@@ -111,6 +117,7 @@ public class ConversationService {
         return new ConversationDetail(toSummary(conversation, views.size()), views);
     }
 
+    @Transactional
     public void delete(Long userId, Long id) {
         find(userId, id);
         messageMapper.delete(new LambdaQueryWrapper<Message>().eq(Message::getConversationId, id));
@@ -118,6 +125,7 @@ public class ConversationService {
     }
 
     /** 账号删除时清理该用户的全部会话与消息。 */
+    @Transactional
     public void deleteAllByUser(Long userId) {
         List<Long> ids = conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
                         .eq(Conversation::getUserId, userId))

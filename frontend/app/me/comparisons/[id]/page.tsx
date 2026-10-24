@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+
 import CompareMatrix from '@/components/compare/CompareMatrix';
 import ComparisonShareActions from '@/components/me/ComparisonShareActions';
+import PageHeader from '@/components/page-header';
+import { Button } from '@/components/ui/button';
 import { fetchComparison, fetchMe } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
@@ -23,24 +26,25 @@ export default async function ComparisonDetailPage({
     notFound();
   }
 
-  const title = comparison.result.repos.map((repo) => repo.fullName).join(' vs ') || comparison.repoKeys.join(' vs ');
+  const title =
+    comparison.result.repos.map((repo) => repo.fullName).join(' vs ') ||
+    comparison.repoKeys.join(' vs ');
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-widest text-accent">对比详情</p>
-          <h1 className="mt-2 truncate text-2xl font-semibold text-ink">{title || '仓库对比'}</h1>
-          <p className="mt-2 text-sm text-ink-secondary">
-            {comparison.createdAt ? `生成于 ${comparison.createdAt} · ` : ''}
-            schema {comparison.schemaVersion}
-            {comparison.ideaId ? ` · 关联想法 #${comparison.ideaId}` : ''}
-          </p>
-        </div>
-        <Link href="/me/comparisons" className="text-xs text-accent hover:underline">
-          返回对比历史
-        </Link>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        index="07.1"
+        eyebrow="Comparison detail"
+        title={title || '仓库对比'}
+        description={`${comparison.createdAt ? `生成于 ${comparison.createdAt} · ` : ''}schema ${comparison.schemaVersion}${
+          comparison.ideaId ? ` · 关联想法 #${comparison.ideaId}` : ''
+        }`}
+        actions={
+          <Button asChild variant="ghost" size="sm" className="rounded-none">
+            <Link href="/me/comparisons">返回对比历史</Link>
+          </Button>
+        }
+      />
 
       <ComparisonShareActions comparisonId={comparison.id} initialToken={comparison.shareToken} />
 

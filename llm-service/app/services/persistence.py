@@ -56,6 +56,7 @@ async def persist_message(
     backend: BackendClient,
     *,
     conversation_id: int | None,
+    user_id: int,
     role: str,
     content: str,
     attempts: int,
@@ -69,6 +70,7 @@ async def persist_message(
     await retry_async(
         lambda: backend.append_message(
             conversation_id=conversation_id,
+            user_id=user_id,
             role=role,
             content=content,
             tool_trace=tool_trace,

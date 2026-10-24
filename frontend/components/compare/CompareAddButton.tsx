@@ -1,12 +1,21 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check, Scale } from 'lucide-react';
+import { toast } from 'sonner';
 
-export const COMPARE_STORAGE_KEY = 'gitstars:compare-repos';
+import { Button } from '@/components/ui/button';
+import {
+  BASKET_CHANGE_EVENT,
+  compareHref,
+  readBasket,
+  toggleRepoInBasket,
+} from '@/lib/compare-basket';
 
 /**
- * 把仓库加入对比篮：持久化到 localStorage 后跳到对比工作台。
- * 最多保留 4 个，新加入的排在最后。
+ * 加入对比篮：只写入本地篮子，不跳转页面。
+ * 这样用户可以在匹配结果里连续挑选多个候选，再统一去对比。
  */
 export default function CompareAddButton({
   fullName,
@@ -16,34 +25,49 @@ export default function CompareAddButton({
   ideaId?: number | null;
 }) {
   const router = useRouter();
+  const [inBasket, setInBasket] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setInBasket(readBasket().includes(fullName));
+    sync();
+    window.addEventListener(BASKET_CHANGE_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(BASKET_CHANGE_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, [fullName]);
 
   const onClick = () => {
-    let stored: string[] = [];
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(COMPARE_STORAGE_KEY) ?? '[]');
-      if (Array.isArray(parsed)) {
-        stored = parsed.filter((item): item is string => typeof item === 'string');
-      }
-    } catch {
-      stored = [];
+    const added = toggleRepoInBasket(fullName);
+    const repos = readBasket();
+    if (!added) {
+      toast(`${fullName} 已移出对比篮`);
+      return;
     }
-    const merged = Array.from(new Set([...stored, fullName])).slice(-4);
-    window.localStorage.setItem(COMPARE_STORAGE_KEY, JSON.stringify(merged));
-
-    const params = new URLSearchParams({ repos: merged.join(',') });
-    if (ideaId) {
-      params.set('ideaId', String(ideaId));
-    }
-    router.push(`/compare?${params.toString()}`);
+    toast(`已加入对比篮 ${repos.length}/4`, {
+      action: {
+        label: '去对比',
+        onClick: () => router.push(compareHref(repos, ideaId)),
+      },
+    });
   };
 
   return (
-    <button
+    <Button
       type="button"
+      variant={inBasket ? 'secondary' : 'outline'}
+      size="sm"
       onClick={onClick}
-      className="rounded-md border border-accent/30 bg-accent/5 px-3 py-1.5 text-sm text-accent transition-colors hover:border-accent"
+      aria-pressed={inBasket}
+      className="rounded-none"
     >
-      加入对比
-    </button>
+      {inBasket ? (
+        <Check className="size-3.5" data-icon="inline-start" />
+      ) : (
+        <Scale className="size-3.5" data-icon="inline-start" />
+      )}
+      {inBasket ? '已在对比篮' : '加入对比'}
+    </Button>
   );
 }

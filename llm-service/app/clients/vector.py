@@ -65,13 +65,17 @@ def build_filter(
 ) -> models.Filter | None:
     must: list[models.Condition] = []
     if languages:
-        must.append(_match_any("language", languages))
+        must.append(_match_any("language", _case_variants(languages)))
     if platforms:
-        must.append(_match_any("platform", platforms))
+        must.append(_match_any("platform", _case_variants(platforms)))
     if category:
         must.append(models.FieldCondition(key="category", match=models.MatchValue(value=category)))
     if licenses:
-        must.append(models.FieldCondition(key="license", match=models.MatchAny(any=licenses)))
+        must.append(
+            models.FieldCondition(
+                key="license", match=models.MatchAny(any=_case_variants(licenses))
+            )
+        )
     if min_stars:
         must.append(models.FieldCondition(key="stars", range=models.Range(gte=min_stars)))
     if repo_id:
@@ -85,6 +89,16 @@ def _match_any(key: str, values: list[str]) -> models.FieldCondition:
     if len(values) == 1:
         return models.FieldCondition(key=key, match=models.MatchValue(value=values[0]))
     return models.FieldCondition(key=key, match=models.MatchAny(any=values))
+
+
+def _case_variants(values: list[str]) -> list[str]:
+    """Qdrant keyword 匹配大小写敏感；同时尝试常见写法，避免 Python/python、MIT/mit 漏召。"""
+    expanded: list[str] = []
+    for value in values:
+        for variant in (value, value.lower(), value.upper(), value.title()):
+            if variant and variant not in expanded:
+                expanded.append(variant)
+    return expanded
 
 
 class VectorStore:

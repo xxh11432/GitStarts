@@ -9,7 +9,7 @@ export default function StreamingMarkdown({ content }: { content: string }) {
     return null;
   }
   return (
-    <div className="space-y-2 break-words text-sm leading-relaxed text-ink">
+    <div className="flex flex-col gap-2 break-words text-sm leading-relaxed text-foreground">
       {renderBlocks(content)}
     </div>
   );
@@ -31,13 +31,13 @@ function renderInline(text: string, prefix: string): ReactNode[] {
     const key = `${prefix}-${index}`;
     if (match[1]) {
       nodes.push(
-        <code key={key} className="rounded bg-surface px-1 py-0.5 font-mono text-[0.85em] text-ink">
+        <code key={key} className="bg-muted px-1 py-0.5 font-mono text-[0.85em] text-foreground">
           {match[1].slice(1, -1)}
         </code>,
       );
     } else if (match[2]) {
       nodes.push(
-        <strong key={key} className="font-semibold text-ink">
+        <strong key={key} className="font-semibold text-foreground">
           {match[2].slice(2, -2)}
         </strong>,
       );
@@ -49,7 +49,7 @@ function renderInline(text: string, prefix: string): ReactNode[] {
           href={match[4]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-accent underline-offset-2 hover:underline"
+          className="text-primary underline-offset-2 hover:underline"
         >
           {label}
         </a>,
@@ -107,7 +107,7 @@ function renderBlocks(content: string): ReactNode[] {
       blocks.push(
         <pre
           key={`code-${key++}`}
-          className="overflow-x-auto rounded-md border border-line bg-surface p-3 text-xs leading-relaxed"
+          className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-relaxed"
         >
           <code className="font-mono">{codeLines.join('\n')}</code>
         </pre>,
@@ -120,7 +120,7 @@ function renderBlocks(content: string): ReactNode[] {
       flushParagraph();
       const level = heading[1].length;
       const className =
-        level <= 2 ? 'mt-1 text-base font-semibold text-ink' : 'mt-1 text-sm font-semibold text-ink';
+        level <= 2 ? 'mt-1 text-base font-semibold text-foreground' : 'mt-1 text-sm font-semibold text-foreground';
       blocks.push(
         <p key={`h-${key++}`} className={className}>
           {renderInline(heading[2], `h-${key}`)}
@@ -152,7 +152,7 @@ function renderBlocks(content: string): ReactNode[] {
                 {header.map((cell, cellIndex) => (
                   <th
                     key={`th-${cellIndex}`}
-                    className="border border-line bg-surface px-2 py-1.5 text-left font-semibold text-ink"
+                    className="border border-border bg-muted px-2 py-1.5 text-left font-semibold text-foreground"
                   >
                     {renderInline(cell, `th-${cellIndex}`)}
                   </th>
@@ -165,7 +165,7 @@ function renderBlocks(content: string): ReactNode[] {
                   {row.map((cell, cellIndex) => (
                     <td
                       key={`td-${cellIndex}`}
-                      className="border border-line px-2 py-1.5 align-top text-ink-secondary"
+                      className="border border-border px-2 py-1.5 align-top text-muted-foreground"
                     >
                       {renderInline(cell, `td-${rowIndex}-${cellIndex}`)}
                     </td>
@@ -193,7 +193,7 @@ function renderBlocks(content: string): ReactNode[] {
       }
       i -= 1;
       blocks.push(
-        <ul key={`ul-${key++}`} className="list-disc space-y-1 pl-5">
+        <ul key={`ul-${key++}`} className="list-disc pl-5 [&>li+li]:mt-1">
           {items.map((item, itemIndex) => (
             <li key={`li-${itemIndex}`}>{renderInline(item, `li-${itemIndex}`)}</li>
           ))}
@@ -216,7 +216,7 @@ function renderBlocks(content: string): ReactNode[] {
       }
       i -= 1;
       blocks.push(
-        <ol key={`ol-${key++}`} className="list-decimal space-y-1 pl-5">
+        <ol key={`ol-${key++}`} className="list-decimal pl-5 [&>li+li]:mt-1">
           {items.map((item, itemIndex) => (
             <li key={`oli-${itemIndex}`}>{renderInline(item, `oli-${itemIndex}`)}</li>
           ))}
@@ -241,7 +241,7 @@ function renderBlocks(content: string): ReactNode[] {
       blocks.push(
         <blockquote
           key={`quote-${key++}`}
-          className="border-l-2 border-line pl-3 text-ink-secondary"
+          className="border-l-2 border-border pl-3 text-muted-foreground"
         >
           {renderInline(quoted.join(' '), `quote-${key}`)}
         </blockquote>,

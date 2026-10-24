@@ -33,6 +33,7 @@ public class StartupSyncRunner implements ApplicationRunner {
         long count = syncService.countRepos();
         if (count > 0) {
             syncExecutor.submit(() -> syncService.backfillPlatforms());
+            syncExecutor.submit(() -> syncService.refreshReleases(300));
             return;
         }
         if (!syncEnabled) {

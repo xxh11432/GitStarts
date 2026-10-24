@@ -108,13 +108,15 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
     )
 
     user_text = _last_user_text(body)
-    await persist_message(
-        backend,
-        conversation_id=conversation_id,
-        role="user",
-        content=user_text,
-        attempts=settings.chat_persist_retries + 1,
-    )
+    if body.persist_user:
+        await persist_message(
+            backend,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role="user",
+            content=user_text,
+            attempts=settings.chat_persist_retries + 1,
+        )
 
     async def event_source() -> AsyncIterator[str]:
         started = time.perf_counter()
@@ -160,6 +162,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
         await persist_message(
             backend,
             conversation_id=conversation_id,
+            user_id=user_id,
             role="assistant",
             content=runner.answer,
             attempts=settings.chat_persist_retries + 1,

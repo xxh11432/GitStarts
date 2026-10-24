@@ -112,12 +112,22 @@ def canonical(value: Any) -> str:
 
 
 async def invoke_structured(llm: Any, schema: type, messages: list[Any]) -> Any:
+    from langchain_core.messages import SystemMessage
+
+    schema_hint = SystemMessage(
+        content=(
+            "只输出一个 JSON 对象，不要输出解释或 Markdown 代码块；"
+            "字段与取值必须符合以下 JSON Schema：\n"
+            + json.dumps(schema.model_json_schema(by_alias=True), ensure_ascii=False)
+        )
+    )
     last_error: Exception | None = None
-    for method in ("json_schema", "function_calling"):
+    for method in ("json_schema", "json_mode", "function_calling"):
         try:
             runnable = llm.with_structured_output(schema, method=method)
-            return await runnable.ainvoke(messages)
-        except Exception as exc:  # 部分供应商不支持 json_schema
+            payload = [*messages, schema_hint] if method == "json_mode" else messages
+            return await runnable.ainvoke(payload)
+        except Exception as exc:  # 部分供应商只支持 response_format=json_object
             last_error = exc
     raise CompareError(f"结构化输出失败：{type(last_error).__name__}", code="llm_failed")
 
@@ -263,6 +273,7 @@ class CompareRunner:
             cells_by_repo[repo_key] = cells
             for cell in cells:
                 yield CompareEvent("cell", cell.model_dump(by_alias=True))
+        completed: dict[str, list[CompareCell]] = dict(resumed)
 
         pending = [repo for repo in prepared.repos if repo["fullName"] not in cells_by_repo]
         semaphore = asyncio.Semaphore(max(1, self._settings.compare_concurrency))
@@ -280,7 +291,8 @@ class CompareRunner:
                     yield CompareEvent("cell", cell.model_dump(by_alias=True))
                 if not outcome.degraded:
                     # 只把真正跑完的仓库写进断点，失败仓库在续跑时重试
-                    await self._save_checkpoint(prepared, cells_by_repo)
+                    completed[outcome.repo_key] = outcome.cells
+                    await self._save_checkpoint(prepared, completed)
         finally:
             for task in tasks:
                 if not task.done():

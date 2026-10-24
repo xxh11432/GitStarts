@@ -72,6 +72,37 @@ async def compare(request: Request, body: CompareRequest) -> Any:
         )
 
     backend = BackendClient(settings)
+    # 配额只读探测：prepare 可能触发 LLM 解析与 idea 落库，必须先拦下已耗尽用户。
+    try:
+        quota_view = await backend.get_quota(user_id) or {}
+    except BackendError as exc:
+        logger.warning("compare_quota_probe_failed", error=str(exc))
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "backend_unavailable",
+                "message": _MESSAGES["backend_unavailable"],
+            },
+        )
+    compare_view = quota_view.get("compare") or {}
+    probed_used = compare_view.get("used")
+    probed_limit = compare_view.get("limit")
+    if (
+        isinstance(probed_used, int)
+        and isinstance(probed_limit, int)
+        and probed_used >= probed_limit
+    ):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "code": "quota_exceeded",
+                "message": _MESSAGES["quota_exceeded"],
+                "used": probed_used,
+                "limit": probed_limit,
+                "resetAt": quota_view.get("resetAt"),
+            },
+        )
+
     vector = VectorStore(settings)
     cache = CacheClient(settings)
     runner = _build_runner(settings, backend, vector, cache, llm)

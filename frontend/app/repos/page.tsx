@@ -1,7 +1,14 @@
 import Link from 'next/link';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+
+import EmptyState from '@/components/empty-state';
 import FilterBar from '@/components/FilterBar';
-import RepoCard from '@/components/RepoCard';
-import { fetchMeta, fetchRepos } from '@/lib/api';
+import PageHeader from '@/components/page-header';
+import RepoCard from '@/components/repo-card';
+import RepoRow from '@/components/repo-row';
+import { Button } from '@/components/ui/button';
+import { fetchFavoriteStatuses, fetchMe, fetchMeta, fetchRepos } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,11 +34,16 @@ export default async function ReposPage({ searchParams }: PageProps) {
   const rawPage = typeof sp.page === 'string' ? parseInt(sp.page, 10) : 1;
   const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
 
-  const filters = { q, category, language, topic, platform, license, sort, order };
-  const [result, meta] = await Promise.all([
-    fetchRepos({ ...filters, page, size: PAGE_SIZE }),
+  const view = value('view') === 'list' ? 'list' : 'grid';
+  const filters = { q, category, language, topic, platform, license, sort, order, view };
+  const [result, meta, me] = await Promise.all([
+    fetchRepos({ q, category, language, topic, platform, license, sort, order, page, size: PAGE_SIZE }),
     fetchMeta(),
+    fetchMe(),
   ]);
+  const favorites = me && result.items.length > 0
+    ? await fetchFavoriteStatuses(result.items.map((repo) => repo.fullName))
+    : null;
 
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const hasFilters = Boolean(q || category || language || topic || platform || license);
@@ -39,59 +51,124 @@ export default async function ReposPage({ searchParams }: PageProps) {
   const prevPage = page > totalPages ? totalPages : Math.max(1, page - 1);
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-title font-semibold text-ink">仓库列表</h1>
-          <p className="mt-1 text-sm text-ink-secondary">
-            共 {result.total.toLocaleString('zh-CN')} 个仓库
-            {hasFilters ? ' · 已应用筛选' : ''}
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        index="02"
+        eyebrow="Repository index"
+        title="仓库档案库"
+        description="按平台、分类、语言与许可组合筛选；每条记录都能回到仓库原文核对。"
+        meta={
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            {result.total.toLocaleString('zh-CN')} records
+            {hasFilters ? ' · filtered' : ' · indexed'}
           </p>
-        </div>
-        <p className="text-xs text-ink-muted">平台、分类、语言与许可可组合筛选</p>
-      </header>
+        }
+        actions={
+          <Button asChild variant="outline" size="sm" className="rounded-none">
+            <Link href="/match">用需求找仓库</Link>
+          </Button>
+        }
+      />
 
-      <FilterBar meta={meta} current={filters} />
+      <div className="grid gap-6 md:grid-cols-[248px_minmax(0,1fr)] lg:gap-8">
+        <FilterBar meta={meta} current={filters} />
 
-      {result.items.length === 0 ? (
-        <div className="rounded-card border border-dashed border-line bg-surface px-4 py-12 text-center">
-          <p className="text-sm text-ink-secondary">
-            {outOfRange
-              ? '该页没有数据，可能已超出总页数'
-              : hasFilters
-                ? '当前筛选条件下没有匹配的仓库'
-                : '暂无数据，等待采集完成'}
-          </p>
-          {(hasFilters || outOfRange) && (
-            <Link
-              href={outOfRange ? pageHref(filters, totalPages) : '/repos'}
-              className="mt-3 inline-block text-sm text-accent transition-colors hover:text-accent-hover"
-            >
-              {outOfRange ? '回到最后一页' : '清除筛选条件'}
-            </Link>
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Showing {result.items.length} of {result.total.toLocaleString('zh-CN')}
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              {hasFilters ? (
+                <Link
+                  href="/repos"
+                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-primary hover:underline"
+                >
+                  重置筛选
+                </Link>
+              ) : null}
+              <div className="inline-flex border border-border">
+                {[
+                  { key: 'grid', label: '卡片' },
+                  { key: 'list', label: '列表' },
+                ].map((option) => (
+                  <Link
+                    key={option.key}
+                    href={pageHref({ ...filters, view: option.key }, page)}
+                    aria-current={view === option.key ? 'page' : undefined}
+                    className={cn(
+                      'px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors',
+                      view === option.key
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    {option.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {result.items.length === 0 ? (
+            <EmptyState
+              title={outOfRange ? '该页没有数据' : hasFilters ? '没有匹配的仓库' : '暂无仓库数据'}
+              description={
+                outOfRange
+                  ? '当前页码超出总页数，可能筛选条件已经变化。'
+                  : hasFilters
+                    ? '试着放宽平台或许可条件，或减少关键词。'
+                    : '等待采集任务完成后再浏览档案。'
+              }
+              action={
+                hasFilters || outOfRange ? (
+                  <Button asChild variant="outline" size="sm" className="rounded-none">
+                    <Link href={outOfRange ? pageHref(filters, totalPages) : '/repos'}>
+                      {outOfRange ? '回到最后一页' : '清除筛选条件'}
+                    </Link>
+                  </Button>
+                ) : null
+              }
+            />
+          ) : view === 'grid' ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {result.items.map((repo) => (
+                <RepoCard
+                  key={repo.id}
+                  repo={repo}
+                  authenticated={Boolean(me)}
+                  favorite={favorites?.[repo.fullName] ?? { favorited: false }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-border bg-background px-4">
+              {result.items.map((repo) => (
+                <RepoRow key={repo.id} repo={repo} />
+              ))}
+            </div>
           )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {result.items.map((repo) => (
-            <RepoCard key={repo.id} repo={repo} />
-          ))}
-        </div>
-      )}
 
-      {result.total > 0 && (
-        <nav className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm">
-          <PageLink href={pageHref(filters, prevPage)} disabled={page <= 1}>
-            上一页
-          </PageLink>
-          <span className="tabular-nums text-ink-muted">
-            第 {Math.min(page, totalPages)} / {totalPages} 页
-          </span>
-          <PageLink href={pageHref(filters, page + 1)} disabled={page >= totalPages}>
-            下一页
-          </PageLink>
-        </nav>
-      )}
+          {result.total > 0 ? (
+            <nav
+              className="flex items-center justify-between gap-3 border-t border-border pt-4 text-sm"
+              aria-label="分页"
+            >
+              <PageLink href={pageHref(filters, prevPage)} disabled={page <= 1}>
+                <ArrowLeft className="size-3.5" data-icon="inline-start" />
+                上一页
+              </PageLink>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Page {Math.min(page, totalPages)} / {totalPages}
+              </span>
+              <PageLink href={pageHref(filters, page + 1)} disabled={page >= totalPages}>
+                下一页
+                <ArrowRight className="size-3.5" data-icon="inline-end" />
+              </PageLink>
+            </nav>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -105,6 +182,7 @@ type Filters = {
   license?: string;
   sort?: string;
   order?: string;
+  view?: string;
 };
 
 function pageHref(filters: Filters, page: number): string {
@@ -132,17 +210,17 @@ function PageLink({
 }) {
   if (disabled) {
     return (
-      <span className="rounded-md border border-line px-3 py-1.5 text-ink-muted opacity-60" aria-disabled>
+      <span
+        className="inline-flex items-center gap-1 border border-border px-3 py-1.5 text-xs text-muted-foreground opacity-50"
+        aria-disabled
+      >
         {children}
       </span>
     );
   }
   return (
-    <Link
-      href={href}
-      className="rounded-md border border-line bg-background px-3 py-1.5 text-ink-secondary transition-colors hover:border-accent hover:text-accent"
-    >
-      {children}
-    </Link>
+    <Button asChild variant="outline" size="sm" className="rounded-none">
+      <Link href={href}>{children}</Link>
+    </Button>
   );
 }

@@ -20,9 +20,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # LLM (OpenAI-compatible). Only this service holds the key.
-    llm_base_url: str = "https://api.siliconflow.cn/v1"
+    llm_base_url: str = "https://api.himodels.ai/v1"
     llm_api_key: str = ""
-    llm_chat_model: str = "deepseek-ai/DeepSeek-V3"
+    llm_chat_model: str = "deepseek-v4-flash"
+    # 思考模式：HiModels 的 DeepSeek V4 默认输出 reasoning，会挤占 max_tokens
+    # 导致正文为空；auto 表示不传该参数，交由供应商默认行为。
+    llm_thinking_mode: Literal["auto", "enabled", "disabled"] = "disabled"
 
     # Embedding: local fastembed by default, or provider API.
     # NOTE: fastembed does not ship an ONNX build of BAAI/bge-m3, so the local
@@ -45,7 +48,7 @@ class Settings(BaseSettings):
     quota_chat_daily: int = 30
     quota_compare_daily: int = 3
     compare_concurrency: int = 4
-    request_timeout_seconds: float = 60.0
+    request_timeout_seconds: float = 120.0
 
     # Chat graph (M3)
     llm_timeout_seconds: float = 45.0
@@ -82,7 +85,7 @@ class Settings(BaseSettings):
     match_limit_default: int = 6
     match_recall_limit: int = 40
     match_keyword_limit: int = 10
-    match_rerank_limit: int = 16
+    match_rerank_limit: int = 8
     match_cache_ttl_seconds: int = 600
 
     # Compare (M5)

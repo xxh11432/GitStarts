@@ -4,10 +4,21 @@ from typing import Any
 
 import httpx
 import structlog
+from structlog.contextvars import get_contextvars
 
 from app.core.config import Settings
 
 logger = structlog.get_logger("backend")
+
+_shared_client: httpx.AsyncClient | None = None
+
+
+def _http_client(timeout: float) -> httpx.AsyncClient:
+    """进程内复用连接池：对话每轮工具调用都会访问 backend，避免反复建连。"""
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        _shared_client = httpx.AsyncClient(timeout=timeout)
+    return _shared_client
 
 
 class BackendError(RuntimeError):
@@ -48,7 +59,12 @@ class BackendClient:
         self._timeout = settings.backend_timeout_seconds
 
     def _headers(self) -> dict[str, str]:
-        return {"X-Internal-Token": self._internal_token}
+        headers = {"X-Internal-Token": self._internal_token}
+        # 把当前请求 ID 带给 backend，保证内部调用的日志也能按同一 ID 关联
+        request_id = get_contextvars().get("request_id")
+        if request_id:
+            headers["X-Request-Id"] = str(request_id)
+        return headers
 
     async def _request(
         self,
@@ -60,14 +76,13 @@ class BackendClient:
     ) -> Any:
         url = f"{self._base_url}{path}"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.request(
-                    method,
-                    url,
-                    params=_clean_params(params),
-                    json=json_body,
-                    headers=self._headers(),
-                )
+            response = await _http_client(self._timeout).request(
+                method,
+                url,
+                params=_clean_params(params),
+                json=json_body,
+                headers=self._headers(),
+            )
         except httpx.HTTPError as exc:
             raise BackendError(f"backend 请求失败：{exc}") from exc
 
@@ -104,6 +119,14 @@ class BackendClient:
             "POST",
             "/internal/quota/reserve",
             json_body={"userId": user_id, "kind": "compare"},
+        )
+
+    async def get_quota(self, user_id: int) -> dict[str, Any]:
+        """只读查询配额，用于在昂贵操作（LLM 解析、落库）之前拦截已耗尽用户。"""
+        return await self._request(
+            "GET",
+            "/internal/quota",
+            params={"userId": user_id},
         )
 
     async def create_comparison(
@@ -273,6 +296,7 @@ class BackendClient:
         self,
         *,
         conversation_id: int,
+        user_id: int,
         role: str,
         content: str,
         tool_trace: list[dict[str, Any]] | None = None,
@@ -285,6 +309,7 @@ class BackendClient:
             "/internal/messages",
             json_body={
                 "conversationId": conversation_id,
+                "userId": user_id,
                 "role": role,
                 "content": content,
                 "toolTrace": tool_trace or [],

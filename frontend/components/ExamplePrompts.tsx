@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowUpRight } from 'lucide-react';
 
 export interface ExamplePrompt {
   label: string;
@@ -7,14 +8,18 @@ export interface ExamplePrompt {
 
 export default function ExamplePrompts({ items }: { items: ExamplePrompt[] }) {
   return (
-    <div className="mx-auto mt-6 flex max-w-3xl flex-wrap justify-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        Try / 示例
+      </span>
       {items.map((item) => (
         <Link
           key={item.label}
           href={`/repos?q=${encodeURIComponent(item.query)}`}
-          className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-ink-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+          className="inline-flex items-center gap-1 border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
         >
           {item.label}
+          <ArrowUpRight className="size-3" aria-hidden />
         </Link>
       ))}
     </div>

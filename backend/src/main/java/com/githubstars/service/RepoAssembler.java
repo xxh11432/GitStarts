@@ -35,9 +35,31 @@ public class RepoAssembler {
                 parseTopics(repo.getTopics()),
                 repo.getCategory(),
                 repo.getPlatform(),
+                parsePlatforms(repo.getPlatforms(), repo.getPlatform()),
+                repo.getLatestReleaseTag(),
+                repo.getLatestReleaseAt(),
                 repo.getDefaultBranch(),
                 repo.getPushedAt(),
                 repo.getCreatedAt());
+    }
+
+    /**
+     * 多平台字段按逗号存储；历史数据只有单平台时回退到 platform。
+     */
+    private List<String> parsePlatforms(String stored, String fallback) {
+        List<String> parsed = new ArrayList<>();
+        if (stored != null && !stored.isBlank()) {
+            for (String item : stored.split(",")) {
+                String value = item.trim();
+                if (!value.isEmpty() && !parsed.contains(value)) {
+                    parsed.add(value);
+                }
+            }
+        }
+        if (parsed.isEmpty() && fallback != null && !fallback.isBlank()) {
+            parsed.add(fallback);
+        }
+        return parsed;
     }
 
     public List<String> parseTopics(String topicsJson) {

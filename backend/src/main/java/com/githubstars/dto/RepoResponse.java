@@ -19,6 +19,9 @@ public record RepoResponse(
         List<String> topics,
         String category,
         String platform,
+        List<String> platforms,
+        String latestReleaseTag,
+        LocalDateTime latestReleaseAt,
         String defaultBranch,
         LocalDateTime pushedAt,
         LocalDateTime createdAt) {

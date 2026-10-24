@@ -27,6 +27,9 @@ export interface Repo {
   topics: string[];
   category?: string;
   platform?: string;
+  platforms?: string[];
+  latestReleaseTag?: string;
+  latestReleaseAt?: string;
   defaultBranch?: string;
   pushedAt?: string;
   createdAt?: string;

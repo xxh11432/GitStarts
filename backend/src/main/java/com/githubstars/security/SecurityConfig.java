@@ -56,15 +56,13 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers("/internal/**"))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/health", "/repos/**", "/meta",
+                        // 公开白名单；新增接口必须显式加入，否则默认要求登录
+                        .requestMatchers("/health", "/error", "/repos/**", "/meta",
                                 "/auth/github/login", "/auth/github/callback", "/auth/csrf",
                                 "/oauth2/**", "/login/**", "/comparisons/share/**").permitAll()
+                        // 内部接口由 InternalTokenFilter 鉴权
                         .requestMatchers("/internal/**").permitAll()
-                        .requestMatchers("/auth/me", "/auth/logout", "/quota", "/ideas/**",
-                                "/comparisons/**", "/favorites", "/favorites/**",
-                                "/conversations", "/conversations/**",
-                                "/profile", "/profile/**", "/account").authenticated()
-                        .anyRequest().permitAll())
+                        .anyRequest().authenticated())
                 .oauth2Login(oauth -> oauth
                         .redirectionEndpoint(endpoint -> endpoint.baseUri("/auth/github/callback"))
                         .userInfoEndpoint(userInfo -> userInfo.userService(githubOAuth2UserService))

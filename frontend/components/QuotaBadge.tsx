@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 import type { Quota, QuotaView } from '@/lib/types';
 
 function ratio(view: QuotaView): number {
@@ -15,19 +18,20 @@ function QuotaRow({ label, view }: { label: string; view: QuotaView }) {
   const nearLimit = percent >= 80;
   return (
     <div>
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="text-ink-secondary">{label}</span>
-        <span className="tabular-nums text-ink">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[13px] text-muted-foreground">{label}</span>
+        <span className="font-mono text-[11px] tabular-nums text-foreground">
           {view.used}
-          <span className="text-ink-muted"> / {view.limit}</span>
+          <span className="text-muted-foreground"> / {view.limit}</span>
         </span>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
-        <div
-          className={`h-full rounded-full transition-all duration-200 ${nearLimit ? 'bg-danger' : 'bg-accent'}`}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
+      <Progress
+        value={percent}
+        className={cn(
+          'mt-2 h-1.5 rounded-none bg-muted',
+          nearLimit && '[&>div]:bg-destructive',
+        )}
+      />
     </div>
   );
 }
@@ -63,23 +67,25 @@ export default function QuotaBadge({ initial }: { initial?: Quota }) {
 
   if (!quota) {
     return (
-      <div className="rounded-card border border-line bg-surface px-4 py-4 text-sm text-ink-muted">
-        {error ?? '正在读取配额…'}
+      <div className="border border-border bg-card px-4 py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        {error ?? '读取配额中…'}
       </div>
     );
   }
 
   return (
-    <section className="rounded-card border border-line bg-background p-4 shadow-card">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-ink">今日额度</h2>
-        <span className="text-xs text-ink-muted">每日 00:00 重置</span>
+    <section className="border border-border bg-card p-4">
+      <div className="mb-4 flex items-baseline justify-between gap-2 border-b border-border pb-2">
+        <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
+          Quota / 今日额度
+        </h2>
+        <span className="font-mono text-[10px] text-muted-foreground">00:00 重置</span>
       </div>
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         <QuotaRow label="AI 对话" view={quota.chat} />
         <QuotaRow label="深度对比" view={quota.compare} />
       </div>
-      {error && <p className="mt-3 text-xs text-danger">{error}</p>}
+      {error ? <p className="mt-3 text-[11px] text-destructive">{error}</p> : null}
     </section>
   );
 }

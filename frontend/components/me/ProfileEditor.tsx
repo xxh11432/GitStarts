@@ -2,16 +2,22 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { X } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { saveProfile } from '@/lib/me';
 import type { Profile } from '@/lib/types';
 
 function TagField({
+  id,
   label,
   hint,
   placeholder,
   values,
   onChange,
 }: {
+  id: string;
   label: string;
   hint: string;
   placeholder: string;
@@ -37,29 +43,34 @@ function TagField({
   };
 
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <span className="text-sm font-medium text-ink">{label}</span>
-        <span className="text-xs text-ink-muted">{hint}</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <Label htmlFor={id} className="text-[13px] font-medium text-foreground">
+          {label}
+        </Label>
+        <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+          {hint}
+        </span>
       </div>
-      <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border border-line bg-background px-2 py-1.5 focus-within:border-accent">
+      <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 border border-border bg-background px-2 py-1.5 focus-within:border-primary">
         {values.map((value) => (
           <span
             key={value}
-            className="inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-0.5 text-xs text-accent"
+            className="inline-flex items-center gap-1 border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[10px] text-primary"
           >
             {value}
             <button
               type="button"
               onClick={() => remove(value)}
               aria-label={`移除 ${value}`}
-              className="text-accent/70 hover:text-accent"
+              className="text-primary/70 hover:text-primary"
             >
-              ×
+              <X className="size-2.5" aria-hidden />
             </button>
           </span>
         ))}
         <input
+          id={id}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -73,7 +84,7 @@ function TagField({
           onBlur={commit}
           placeholder={placeholder}
           aria-label={label}
-          className="min-w-[120px] flex-1 bg-transparent px-1 py-0.5 text-sm text-ink outline-none placeholder:text-ink-muted"
+          className="min-w-[100px] flex-1 bg-transparent px-1 py-0.5 text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
       </div>
     </div>
@@ -105,51 +116,51 @@ export default function ProfileEditor({ initial }: { initial: Profile }) {
   };
 
   return (
-    <section className="rounded-card border border-line bg-background p-5 shadow-card">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="border border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
         <div>
-          <h2 className="text-base font-semibold text-ink">技能与偏好</h2>
-          <p className="mt-1 text-xs text-ink-muted">
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
+            Profile / 技能与偏好
+          </h2>
+          <p className="mt-1 text-[11px] text-muted-foreground">
             用于个性化推荐位，仅自己可见；输入后按回车或逗号添加。
           </p>
         </div>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={busy}
-          className="rounded-md bg-accent px-4 py-1.5 text-sm text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
-        >
+        <Button type="button" size="sm" onClick={submit} disabled={busy} className="rounded-none">
           {busy ? '保存中…' : '保存画像'}
-        </button>
+        </Button>
       </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 p-4 md:grid-cols-3">
         <TagField
+          id="profile-skills"
           label="技能"
-          hint="如 Java、TypeScript"
+          hint="Java / TypeScript"
           placeholder="添加技能"
           values={skills}
           onChange={setSkills}
         />
         <TagField
+          id="profile-interests"
           label="兴趣"
-          hint="如 知识库、Agent"
+          hint="知识库 / Agent"
           placeholder="添加兴趣"
           values={interests}
           onChange={setInterests}
         />
         <TagField
+          id="profile-preferences"
           label="偏好"
-          hint="如 中文文档、轻量部署"
+          hint="中文文档 / 轻量部署"
           placeholder="添加偏好"
           values={preferences}
           onChange={setPreferences}
         />
       </div>
-      {message ? <p className="mt-3 text-xs text-accent">{message}</p> : null}
-      {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
+      {message ? <p className="px-4 pb-3 text-[11px] text-primary">{message}</p> : null}
+      {error ? <p className="px-4 pb-3 text-[11px] text-destructive">{error}</p> : null}
       {initial.updatedAt ? (
-        <p className="mt-2 text-xs text-ink-muted">
-          上次保存：{initial.updatedAt.slice(0, 16).replace('T', ' ')}
+        <p className="border-t border-border px-4 py-2 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+          上次保存 {initial.updatedAt.slice(0, 16).replace('T', ' ')}
         </p>
       ) : null}
     </section>

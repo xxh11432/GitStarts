@@ -2,6 +2,21 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
+
+import EmptyState from '@/components/empty-state';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { removeFavorite, updateFavoriteNote } from '@/lib/me';
 import type { FavoriteView } from '@/lib/types';
 
@@ -13,10 +28,12 @@ export default function FavoritesManager({
   total: number;
 }) {
   const [items, setItems] = useState(initialItems);
+  const [totalCount, setTotalCount] = useState(total);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const [pendingRemove, setPendingRemove] = useState<FavoriteView | null>(null);
 
   const startEdit = (item: FavoriteView) => {
     setEditingId(item.id);
@@ -39,14 +56,13 @@ export default function FavoritesManager({
   };
 
   const remove = async (id: number) => {
-    if (!window.confirm('确定取消收藏这个仓库吗？')) {
-      return;
-    }
     setBusyId(id);
     setError('');
     try {
       await removeFavorite(id);
       setItems((current) => current.filter((item) => item.id !== id));
+      setTotalCount((current) => Math.max(0, current - 1));
+      setPendingRemove(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '取消收藏失败');
     } finally {
@@ -56,79 +72,136 @@ export default function FavoritesManager({
 
   if (items.length === 0) {
     return (
-      <p className="rounded-card border border-dashed border-line bg-surface p-6 text-sm text-ink-muted">
-        还没有收藏。去仓库详情页点击「收藏」即可沉淀到这里。
-      </p>
+      <EmptyState
+        title="还没有收藏"
+        description="去仓库详情页点击「收藏」，备注与分类会一起沉淀到这里。"
+        action={
+          <Button asChild variant="outline" size="sm" className="rounded-none">
+            <Link href="/repos">浏览仓库</Link>
+          </Button>
+        }
+      />
     );
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-ink-muted">共 {total} 个收藏{items.length < total ? `，当前展示 ${items.length} 个` : ''}</p>
-      {error ? <p className="text-xs text-danger">{error}</p> : null}
-      {items.map((item) => (
-        <article key={item.id} className="rounded-card border border-line bg-background p-4 shadow-card">
+    <div className="flex flex-col gap-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+        共 {totalCount} 个收藏
+        {items.length < totalCount ? ` · 当前展示 ${items.length} 个` : ''}
+      </p>
+      {error ? <p className="text-[11px] text-destructive">{error}</p> : null}
+
+      {items.map((item, index) => (
+        <article key={item.id} className="border border-border bg-card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <Link href={`/repos/${item.repo.fullName}`} className="text-sm font-medium text-accent hover:underline">
-                {item.repo.fullName}
-              </Link>
-              <p className="mt-1 text-xs text-ink-muted">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <Link
+                  href={`/repos/${item.repo.fullName}`}
+                  className="font-mono text-[12px] font-medium text-foreground decoration-primary decoration-2 underline-offset-4 hover:underline"
+                >
+                  {item.repo.fullName}
+                </Link>
+              </div>
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
                 {[item.repo.language, item.repo.category].filter(Boolean).join(' · ') || '未分类'}
                 {' · '}★ {item.repo.stars.toLocaleString('en-US')}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => startEdit(item)}
-                className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-secondary hover:border-accent hover:text-accent"
+                className="rounded-none"
               >
+                <Pencil className="size-3" data-icon="inline-start" />
                 备注
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                onClick={() => remove(item.id)}
+                variant="destructive"
+                size="sm"
+                onClick={() => setPendingRemove(item)}
                 disabled={busyId === item.id}
-                className="rounded-md border border-line px-2.5 py-1 text-xs text-danger hover:border-danger disabled:opacity-60"
+                className="rounded-none"
               >
+                <Trash2 className="size-3" data-icon="inline-start" />
                 {busyId === item.id ? '处理中…' : '取消收藏'}
-              </button>
+              </Button>
             </div>
           </div>
-          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-ink-muted">
+
+          <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
             {item.repo.description ?? '暂无简介'}
           </p>
+
           {editingId === item.id ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input
+              <Input
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 maxLength={500}
                 placeholder="为什么收藏它？"
-                className="min-w-[200px] flex-1 rounded-md border border-line bg-background px-2 py-1 text-xs text-ink outline-none focus:border-accent"
+                className="h-8 min-w-[200px] flex-1 rounded-none text-xs"
               />
-              <button
+              <Button
                 type="button"
-                onClick={() => saveNote(item.id)}
+                size="sm"
+                onClick={() => void saveNote(item.id)}
                 disabled={busyId === item.id}
-                className="rounded-md bg-accent px-3 py-1 text-xs text-white disabled:opacity-60"
+                className="rounded-none"
               >
                 保存
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setEditingId(null)}
-                className="rounded-md border border-line px-3 py-1 text-xs text-ink-secondary"
+                className="rounded-none"
               >
                 取消
-              </button>
+              </Button>
             </div>
           ) : item.note ? (
-            <p className="mt-2 rounded bg-surface px-2 py-1 text-xs text-ink-secondary">备注：{item.note}</p>
+            <p className="mt-2 border-l-2 border-highlight bg-highlight/10 px-2 py-1 text-[11px] text-foreground">
+              备注：{item.note}
+            </p>
           ) : null}
         </article>
       ))}
+
+      <AlertDialog open={Boolean(pendingRemove)} onOpenChange={(open) => !open && setPendingRemove(null)}>
+        <AlertDialogContent className="rounded-none">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display">取消收藏这个仓库？</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] leading-relaxed">
+              {pendingRemove
+                ? `将从收藏中移除 ${pendingRemove.repo.fullName}，备注也会一起删除。`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-none">保留</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingRemove) {
+                  void remove(pendingRemove.id);
+                }
+              }}
+              className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              确认移除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

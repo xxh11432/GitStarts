@@ -158,7 +158,7 @@ flowchart TB
 | 认证 | Spring Security · OAuth2 Client · Spring Session Redis |
 | 存储 | MySQL 8 · Redis 7 · Qdrant 1.x |
 | 前端 | Next.js 14（App Router）· TypeScript · Tailwind CSS |
-| 模型 | OpenAI 兼容协议（默认 SiliconFlow：DeepSeek）；embedding 本地 fastembed（1024 维多语言模型），可切供应商 API |
+| 模型 | OpenAI 兼容协议（默认 HiModels：DeepSeek V4 Flash）；embedding 本地 fastembed（1024 维多语言模型），可切供应商 API |
 | 部署 | Nginx · Docker Compose |
 
 ## 快速开始
@@ -170,10 +170,12 @@ git clone https://github.com/xxh11432/GitStarts.git
 cd GitStarts
 cp .env.example .env
 # 编辑 .env：MySQL / Redis 密码，GITHUB_TOKEN（提升 API 限流），LLM_API_KEY（M3 起）
+# INTERNAL_TOKEN 必填：用 `openssl rand -hex 32` 生成后填入；
+# 留空时 backend 内部接口一律 503，AI 对话 / 匹配 / 对比均不可用
 docker compose up -d --build
 ```
 
-首次 `--build` 会预热 embedding 模型（约 2 GB），构建较慢；可设 `PREWARM_MODELS=false` 跳过，模型改在首次请求时下载。
+镜像构建期不再下载 embedding 模型。容器启动时先检查 `model-cache` 卷（挂载到 `/models`）里是否已有模型：命中则离线加载，缺失才在首次使用时下载（约 2 GB）并持久化到该卷，之后重建或重启容器都不会重复下载。如需把模型直接打进镜像（离线部署），可设 `PREWARM_MODELS=true`。
 
 > 从 M5 升级到 M6 时，已有数据库需补 `favorites` 表（新库由 `deploy/init.sql` 直接创建，无需执行）：
 > 重跑 `deploy/init.sql` 即可（全部为 `CREATE TABLE IF NOT EXISTS`）。
@@ -248,7 +250,7 @@ uv run python -m worker
 | `LLM_BASE_URL` / `LLM_API_KEY` | 模型网关地址与密钥（仅 llm-service 可见） |
 | `LLM_CHAT_MODEL` / `LLM_EMBEDDING_MODEL` | 对话与向量模型（默认 DeepSeek + 1024 维多语言 embedding） |
 | `EMBEDDING_PROVIDER` | `fastembed`（本地，默认）或 `api` |
-| `PREWARM_MODELS` | 镜像构建期是否预热 embedding 模型 |
+| `PREWARM_MODELS` | 镜像构建期是否内置 embedding 模型（默认 `false`，启动时优先复用 `model-cache` 卷缓存） |
 | `INTERNAL_TOKEN` | 服务间调用鉴权（M0 起） |
 | `BACKEND_URL` | llm-service 访问 backend 内部接口的地址（Compose 内为 `http://backend:8080`） |
 | `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址与集合名（默认 `repo_chunks`） |

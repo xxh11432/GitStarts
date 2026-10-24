@@ -18,8 +18,11 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Future;
+import java.util.regex.Pattern;
 
 @Service
 public class SyncService {
@@ -30,6 +33,10 @@ public class SyncService {
     private static final int PAGE_SIZE = 100;
     private static final int DEFAULT_MAX_REPOS = 1000;
     private static final int INCREMENTAL_BATCH = 100;
+    private static final int PLATFORM_BACKFILL_BATCH = 500;
+    private static final int RELEASE_BATCH = 50;
+    private static final int RELEASE_REFRESH_DAYS = 30;
+    private static final Pattern REPO_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_.-]+$");
 
     private static final List<String> TOP_LANGUAGES = List.of(
             "Java", "JavaScript", "TypeScript", "Python", "Go", "Rust", "C++", "C",
@@ -68,17 +75,28 @@ public class SyncService {
     }
 
     /**
-     * 为 M2 之前入库的仓库补算平台。启动时执行一次，按需分批处理。
+     * 为 M2 之前入库的仓库补算平台。启动时执行一次，按 id 游标分批处理直到没有缺失行。
      */
     public int backfillPlatforms() {
-        List<Repository> repos = repositoryMapper.selectList(new LambdaQueryWrapper<Repository>()
-                .isNull(Repository::getPlatform)
-                .last("LIMIT 5000"));
         int updated = 0;
-        for (Repository repo : repos) {
-            repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
-            repositoryMapper.updateById(repo);
-            updated++;
+        long cursor = 0;
+        while (true) {
+            List<Repository> repos = repositoryMapper.selectList(new LambdaQueryWrapper<Repository>()
+                    .and(w -> w.isNull(Repository::getPlatform).or().isNull(Repository::getPlatforms))
+                    .gt(Repository::getId, cursor)
+                    .orderByAsc(Repository::getId)
+                    .last("LIMIT " + PLATFORM_BACKFILL_BATCH));
+            if (repos.isEmpty()) {
+                break;
+            }
+            for (Repository repo : repos) {
+                repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
+                repo.setPlatforms(String.join(",", platformResolver.resolveAll(
+                        repo.getDescription(), repo.getTopics(), repo.getLanguage())));
+                repositoryMapper.updateById(repo);
+                cursor = repo.getId();
+                updated++;
+            }
         }
         if (updated > 0) {
             log.info("平台回填完成，更新 {} 个仓库", updated);
@@ -157,6 +175,7 @@ public class SyncService {
                     stats.failed++;
                 }
             }
+            refreshReleasesFor(repos);
             finishLog(syncLog, "success", stats, null);
         } catch (Exception e) {
             log.error("incremental 执行失败", e);
@@ -181,11 +200,13 @@ public class SyncService {
             if (!items.isArray() || items.isEmpty()) {
                 return;
             }
+            List<Repository> pageRepos = new ArrayList<>();
             for (JsonNode item : items) {
                 stats.total++;
                 try {
                     Repository repo = mapRepo(item);
-                    upsert(repo);
+                    repo.setId(upsert(repo));
+                    pageRepos.add(repo);
                     tagService.syncTags(repo);
                     stats.succeeded++;
                 } catch (Exception e) {
@@ -193,6 +214,7 @@ public class SyncService {
                     stats.failed++;
                 }
             }
+            refreshReleasesFor(pageRepos);
             if (items.size() < PAGE_SIZE) {
                 return;
             }
@@ -218,7 +240,7 @@ public class SyncService {
         }
     }
 
-    private void upsert(Repository repo) {
+    private Long upsert(Repository repo) {
         Repository existing = repositoryMapper.selectOne(
                 new LambdaQueryWrapper<Repository>().eq(Repository::getFullName, repo.getFullName()));
         if (existing == null) {
@@ -227,6 +249,7 @@ public class SyncService {
             repo.setId(existing.getId());
             repositoryMapper.updateById(repo);
         }
+        return repo.getId();
     }
 
     private Repository mapRepo(JsonNode item) {
@@ -254,8 +277,113 @@ public class SyncService {
         repo.setDisabled(item.path("disabled").asBoolean(false) ? 1 : 0);
         repo.setCategory(categorizer.categorize(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
         repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
+        repo.setPlatforms(String.join(",", platformResolver.resolveAll(
+                repo.getDescription(), repo.getTopics(), repo.getLanguage())));
         repo.setSyncedAt(LocalDateTime.now());
         return repo;
+    }
+
+    /**
+     * 刷新一批仓库的最新 Release（GraphQL 批量，50 个一批）。
+     * 没有 Release 的仓库也会记录 releaseCheckedAt，避免每天重复检查。
+     */
+    private int refreshReleasesFor(List<Repository> repos) {
+        if (repos == null || repos.isEmpty()) {
+            return 0;
+        }
+        List<Repository> valid = new ArrayList<>();
+        for (Repository repo : repos) {
+            if (repo.getId() == null || repo.getOwner() == null || repo.getName() == null) {
+                continue;
+            }
+            if (REPO_NAME_PATTERN.matcher(repo.getOwner()).matches()
+                    && REPO_NAME_PATTERN.matcher(repo.getName()).matches()) {
+                valid.add(repo);
+            }
+        }
+        int updated = 0;
+        for (int start = 0; start < valid.size(); start += RELEASE_BATCH) {
+            List<Repository> batch = valid.subList(start, Math.min(start + RELEASE_BATCH, valid.size()));
+            updated += refreshReleaseBatch(batch);
+        }
+        return updated;
+    }
+
+    private int refreshReleaseBatch(List<Repository> batch) {
+        StringBuilder query = new StringBuilder("query{");
+        Map<String, Repository> byAlias = new LinkedHashMap<>();
+        for (int i = 0; i < batch.size(); i++) {
+            Repository repo = batch.get(i);
+            String alias = "r" + i;
+            byAlias.put(alias, repo);
+            query.append(alias).append(":repository(owner:\"").append(repo.getOwner())
+                    .append("\",name:\"").append(repo.getName())
+                    .append("\"){latestRelease{tagName publishedAt}}");
+        }
+        query.append('}');
+
+        JsonNode data;
+        try {
+            data = githubClient.graphql(query.toString()).path("data");
+        } catch (Exception e) {
+            log.warn("刷新 Release 失败：{}", e.getMessage());
+            return 0;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        int updated = 0;
+        for (Map.Entry<String, Repository> entry : byAlias.entrySet()) {
+            Repository repo = entry.getValue();
+            JsonNode release = data.path(entry.getKey()).path("latestRelease");
+            Repository patch = new Repository();
+            patch.setId(repo.getId());
+            patch.setReleaseCheckedAt(now);
+            if (!release.isNull() && !release.isMissingNode()) {
+                String tag = release.path("tagName").asText(null);
+                if (tag != null && !tag.isBlank() && tag.length() <= 64) {
+                    patch.setLatestReleaseTag(tag);
+                }
+                LocalDateTime publishedAt = parseDate(release.path("publishedAt"));
+                if (publishedAt != null) {
+                    patch.setLatestReleaseAt(publishedAt);
+                }
+            }
+            repositoryMapper.updateById(patch);
+            if (patch.getLatestReleaseTag() != null) {
+                repo.setLatestReleaseTag(patch.getLatestReleaseTag());
+            }
+            repo.setLatestReleaseAt(patch.getLatestReleaseAt());
+            repo.setReleaseCheckedAt(now);
+            updated++;
+        }
+        return updated;
+    }
+
+    /**
+     * 补齐/刷新历史仓库的 Release 信息；按 id 游标分页，30 天内的不重复检查。
+     */
+    public int refreshReleases(int maxRepos) {
+        int updated = 0;
+        long cursor = 0;
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(RELEASE_REFRESH_DAYS);
+        while (updated < maxRepos) {
+            int limit = Math.min(RELEASE_BATCH * 2, maxRepos - updated);
+            List<Repository> repos = repositoryMapper.selectList(new LambdaQueryWrapper<Repository>()
+                    .and(w -> w.isNull(Repository::getReleaseCheckedAt)
+                            .or().lt(Repository::getReleaseCheckedAt, cutoff))
+                    .gt(Repository::getId, cursor)
+                    .orderByAsc(Repository::getId)
+                    .last("LIMIT " + limit));
+            if (repos.isEmpty()) {
+                break;
+            }
+            updated += refreshReleasesFor(repos);
+            cursor = repos.get(repos.size() - 1).getId();
+        }
+        if (updated > 0) {
+            log.info("Release 刷新完成，更新 {} 个仓库", updated);
+        }
+        return updated;
     }
 
     private LocalDateTime parseDate(JsonNode node) {

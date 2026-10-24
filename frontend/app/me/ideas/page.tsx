@@ -1,5 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ArrowUpRight } from 'lucide-react';
+
+import EmptyState from '@/components/empty-state';
+import PageHeader from '@/components/page-header';
+import { Button } from '@/components/ui/button';
 import { fetchMe, fetchMyIdeas } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
@@ -16,46 +21,60 @@ export default async function IdeasPage() {
   const page = await fetchMyIdeas(1, 50);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-widest text-accent">我的想法</p>
-          <h1 className="mt-2 text-2xl font-semibold text-ink">结构化需求</h1>
-          <p className="mt-2 text-sm text-ink-secondary">想法会被结构化保存，可直接带入匹配或对比。</p>
-        </div>
-        <Link href="/me" className="text-xs text-accent hover:underline">
-          返回个人中心
-        </Link>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        index="06"
+        eyebrow="My ideas"
+        title="结构化需求"
+        description="想法会被结构化保存，可直接带入匹配或对比。"
+        actions={
+          <Button asChild variant="ghost" size="sm" className="rounded-none">
+            <Link href="/me">返回个人中心</Link>
+          </Button>
+        }
+      />
 
       {page?.items.length ? (
-        <div className="space-y-3">
-          {page.items.map((idea) => (
-            <article key={idea.id} className="rounded-card border border-line bg-background p-4 shadow-card">
+        <div className="flex flex-col gap-3">
+          {page.items.map((idea, index) => (
+            <article key={idea.id} className="border border-border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-ink">{idea.title || `想法 #${idea.id}`}</h2>
-                  <p className="mt-1 text-[11px] text-ink-muted">
-                    版本 {idea.revision} · 更新于 {formatTime(idea.updatedAt)}
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <h2 className="text-sm font-semibold text-foreground">
+                      {idea.title || `想法 #${idea.id}`}
+                    </h2>
+                  </div>
+                  <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                    rev {idea.revision} · {formatTime(idea.updatedAt)}
                   </p>
                 </div>
-                <Link
-                  href={`/compare?ideaId=${idea.id}`}
-                  className="rounded-md border border-accent/30 bg-accent/5 px-3 py-1 text-xs text-accent hover:border-accent"
-                >
-                  继续对比
-                </Link>
+                <Button asChild variant="outline" size="sm" className="rounded-none">
+                  <Link href={`/compare?ideaId=${idea.id}`}>
+                    继续对比
+                    <ArrowUpRight className="size-3.5" data-icon="inline-end" />
+                  </Link>
+                </Button>
               </div>
-              <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-ink-secondary">
+              <p className="mt-3 whitespace-pre-wrap border-l-2 border-border pl-3 text-[12px] leading-relaxed text-muted-foreground">
                 {idea.rawText}
               </p>
             </article>
           ))}
         </div>
       ) : (
-        <p className="rounded-card border border-dashed border-line bg-surface p-6 text-sm text-ink-muted">
-          还没有保存的想法。去「语义匹配」描述你的需求即可自动沉淀。
-        </p>
+        <EmptyState
+          title="还没有保存的想法"
+          description="去「语义匹配」描述你的需求，结构化结果会自动沉淀。"
+          action={
+            <Button asChild variant="outline" size="sm" className="rounded-none">
+              <Link href="/match">开始匹配</Link>
+            </Button>
+          }
+        />
       )}
     </div>
   );

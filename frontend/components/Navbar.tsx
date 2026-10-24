@@ -1,56 +1,49 @@
 import Link from 'next/link';
-import { fetchMe } from '@/lib/api';
+
 import LoginButton from './LoginButton';
+import MobileNav from './mobile-nav';
+import CommandMenu from './command-menu';
+import NavLinks from './nav-links';
 import UserMenu from './UserMenu';
+import { fetchMe } from '@/lib/api';
 
 export default async function Navbar() {
   const me = await fetchMe();
+  const nickname = me?.nickname ?? 'GitHub 用户';
 
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-background/85 backdrop-blur">
-      <nav className="mx-auto flex h-14 max-w-container items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 text-base font-semibold text-ink">
-          <span aria-hidden className="h-2.5 w-2.5 rounded-[3px] bg-accent" />
-          GitStars
+    <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <div className="mx-auto flex h-14 max-w-container items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="GitStars 首页">
+          <span className="grid size-6 place-items-center border border-foreground/60 bg-primary font-mono text-[10px] font-medium text-primary-foreground">
+            GS
+          </span>
+          <span className="font-display text-[15px] font-semibold tracking-tight text-foreground">
+            GitStars
+          </span>
+          <span className="hidden font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground lg:inline">
+            Ledger
+          </span>
         </Link>
-        <div className="flex items-center gap-1 sm:gap-3">
-          <Link
-            href="/"
-            className="hidden rounded-md px-2 py-1 text-sm text-ink-secondary transition-colors hover:text-ink sm:block"
-          >
-            首页
-          </Link>
-          <Link
-            href="/repos"
-            className="rounded-md px-2 py-1 text-sm text-ink-secondary transition-colors hover:text-ink"
-          >
-            仓库列表
-          </Link>
-          <Link
-            href="/match"
-            className="rounded-md px-2 py-1 text-sm text-ink-secondary transition-colors hover:text-ink"
-          >
-            匹配
-          </Link>
-          <Link
-            href="/compare"
-            className="rounded-md px-2 py-1 text-sm text-ink-secondary transition-colors hover:text-ink"
-          >
-            对比
-          </Link>
-          <Link
-            href="/#composer"
-            className="hidden rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover sm:block"
-          >
-            描述需求
-          </Link>
+
+        <nav className="ml-2 hidden items-center gap-0.5 md:flex" aria-label="主导航">
+          <NavLinks />
+        </nav>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          <CommandMenu />
           {me ? (
-            <UserMenu nickname={me.nickname ?? '我'} avatarUrl={me.avatarUrl} />
+            <UserMenu nickname={nickname} avatarUrl={me.avatarUrl} />
           ) : (
             <LoginButton next="/" compact />
           )}
+          <MobileNav
+            authenticated={Boolean(me)}
+            nickname={nickname}
+            avatarUrl={me?.avatarUrl}
+          />
         </div>
-      </nav>
+      </div>
     </header>
   );
 }

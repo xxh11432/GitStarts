@@ -138,8 +138,9 @@ public class ProfileService {
                         w.or();
                     }
                     String token = tokens.get(index);
-                    w.like(Repository::getLanguage, token)
-                            .or().like(Repository::getCategory, token)
+                    // 语言/分类按精确匹配，避免 java 命中 javascript；主题/简介保留包含匹配
+                    w.eq(Repository::getLanguage, token)
+                            .or().eq(Repository::getCategory, token)
                             .or().like(Repository::getTopics, token)
                             .or().like(Repository::getDescription, token);
                 }
@@ -188,10 +189,8 @@ public class ProfileService {
                 reasons.add("主题：" + token);
             } else if (containsIgnoreCase(description, token)) {
                 score += 1;
+                reasons.add("简介提及：" + token);
             }
-        }
-        if (reasons.isEmpty()) {
-            reasons.add("与画像关键词相关");
         }
         List<String> limited = reasons.stream().limit(3).collect(Collectors.toList());
         return new Scored(score, limited);

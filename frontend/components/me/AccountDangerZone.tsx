@@ -1,6 +1,20 @@
 'use client';
 
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { deleteAccount } from '@/lib/me';
 
 export default function AccountDangerZone() {
@@ -8,12 +22,6 @@ export default function AccountDangerZone() {
   const [error, setError] = useState('');
 
   const remove = async () => {
-    const confirmed = window.confirm(
-      '删除账号会永久清除你的收藏、想法、对比、会话与画像，且无法恢复。确定继续吗？',
-    );
-    if (!confirmed) {
-      return;
-    }
     setBusy(true);
     setError('');
     try {
@@ -26,20 +34,43 @@ export default function AccountDangerZone() {
   };
 
   return (
-    <section className="rounded-card border border-danger/30 bg-danger/5 p-5">
-      <h2 className="text-sm font-semibold text-danger">删除账号</h2>
-      <p className="mt-1 text-xs leading-relaxed text-ink-secondary">
-        将清理账号下的收藏、想法、对比记录、会话历史、画像与用量数据，操作不可恢复。
-      </p>
-      <button
-        type="button"
-        onClick={remove}
-        disabled={busy}
-        className="mt-3 rounded-md border border-danger px-3 py-1.5 text-xs text-danger transition-colors hover:bg-danger hover:text-white disabled:opacity-60"
-      >
-        {busy ? '清理中…' : '删除我的账号与数据'}
-      </button>
-      {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+    <section className="border border-destructive/40 bg-destructive/5 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-destructive">
+            Danger zone / 删除账号
+          </h2>
+          <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-muted-foreground">
+            将清理账号下的收藏、想法、对比记录、会话历史、画像与用量数据，操作不可恢复。
+          </p>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="destructive" size="sm" disabled={busy} className="rounded-none">
+              <Trash2 className="size-3.5" data-icon="inline-start" />
+              {busy ? '清理中…' : '删除我的账号与数据'}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent className="rounded-none">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-display">确认永久删除账号？</AlertDialogTitle>
+              <AlertDialogDescription className="text-[12px] leading-relaxed">
+                删除账号会永久清除你的收藏、想法、对比、会话与画像，且无法恢复。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="rounded-none">取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => void remove()}
+                className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                确认删除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+      {error ? <p className="mt-3 text-[11px] text-destructive">{error}</p> : null}
     </section>
   );
 }

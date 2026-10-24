@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -50,6 +51,16 @@ public class FavoriteController {
     public FavoriteStatusResponse status(@AuthenticationPrincipal OAuth2UserPrincipal principal,
                                          @RequestParam String fullName) {
         return favoriteService.status(principal.getUserId(), fullName);
+    }
+
+    /**
+     * 列表页批量收藏状态：fullNames 用逗号分隔，最多 50 个。
+     */
+    @GetMapping("/statuses")
+    public Map<String, FavoriteStatusResponse> statuses(
+            @AuthenticationPrincipal OAuth2UserPrincipal principal,
+            @RequestParam String fullNames) {
+        return favoriteService.statuses(principal.getUserId(), List.of(fullNames.split(",")));
     }
 
     @PatchMapping("/{id}")

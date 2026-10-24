@@ -1,6 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { Bookmark } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { redirectToLogin } from '@/lib/client';
 import { addFavorite, removeFavorite } from '@/lib/me';
 
@@ -45,21 +49,23 @@ export default function FavoriteButton({
   };
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <button
+    <div className="flex flex-col items-start gap-1">
+      <Button
         type="button"
+        variant={favorited ? 'secondary' : 'outline'}
+        size="sm"
         onClick={toggle}
         disabled={busy}
         aria-pressed={favorited}
-        className={`rounded-md border px-3 py-1.5 text-sm transition-colors disabled:opacity-60 ${
-          favorited
-            ? 'border-accent/40 bg-accent/10 text-accent'
-            : 'border-line bg-background text-ink-secondary hover:border-accent hover:text-accent'
-        }`}
+        className="rounded-none"
       >
+        <Bookmark
+          className={cn('size-3.5', favorited && 'fill-current')}
+          data-icon="inline-start"
+        />
         {busy ? '处理中…' : favorited ? '已收藏' : '收藏'}
-      </button>
-      {error ? <span className="max-w-[180px] text-right text-xs text-danger">{error}</span> : null}
+      </Button>
+      {error ? <span className="max-w-[200px] text-[11px] text-destructive">{error}</span> : null}
     </div>
   );
 }

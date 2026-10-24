@@ -32,4 +32,11 @@ public class SyncScheduler {
         log.info("开始按语言同步");
         syncService.languageSync();
     }
+
+    /** 每天刷新一批仓库的最新 Release 版本号（GraphQL 批量）。 */
+    @Scheduled(initialDelay = 180_000, fixedDelay = 24 * 3_600_000)
+    public void releaseJob() {
+        log.info("开始刷新 Release 版本");
+        syncService.refreshReleases(1000);
+    }
 }

@@ -1,7 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+
 import ConversationDeleteButton from '@/components/me/ConversationDeleteButton';
+import PageHeader from '@/components/page-header';
 import StreamingMarkdown from '@/components/StreamingMarkdown';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { fetchConversation, fetchMe } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
@@ -34,59 +38,82 @@ export default async function ConversationDetailPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-widest text-accent">会话详情</p>
-          <h1 className="mt-2 truncate text-2xl font-semibold text-ink">
-            {detail.conversation.title || `会话 #${detail.conversation.id}`}
-          </h1>
-          <p className="mt-2 text-sm text-ink-secondary">
-            {MODE_LABELS[detail.conversation.mode] ?? detail.conversation.mode} ·{' '}
-            {detail.conversation.messageCount} 条消息 · 更新于 {formatTime(detail.conversation.updatedAt)}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/me/conversations" className="text-xs text-accent hover:underline">
-            返回会话历史
-          </Link>
-          <ConversationDeleteButton conversationId={detail.conversation.id} />
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        index="08.1"
+        eyebrow="Conversation detail"
+        title={detail.conversation.title || `会话 #${detail.conversation.id}`}
+        description={`${MODE_LABELS[detail.conversation.mode] ?? detail.conversation.mode} · ${
+          detail.conversation.messageCount
+        } 条消息 · 更新于 ${formatTime(detail.conversation.updatedAt)}`}
+        actions={
+          <>
+            <Button asChild variant="ghost" size="sm" className="rounded-none">
+              <Link href="/me/conversations">返回会话历史</Link>
+            </Button>
+            <ConversationDeleteButton conversationId={detail.conversation.id} />
+          </>
+        }
+      />
 
-      <div className="space-y-3">
+      <div className="flex flex-col gap-3">
         {detail.messages.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-surface p-6 text-sm text-ink-muted">
+          <p className="border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
             这条会话还没有消息。
           </p>
         ) : (
           detail.messages.map((message) => {
             const isUser = message.role === 'user';
             const isTool = message.role === 'tool';
-            return (
-              <article
-                key={message.id}
-                className={`rounded-card border p-4 shadow-card ${
-                  isUser
-                    ? 'border-accent/30 bg-accent/5'
-                    : isTool
-                      ? 'border-line bg-surface'
-                      : 'border-line bg-background'
-                }`}
-              >
-                <div className="mb-2 flex items-baseline justify-between gap-3">
-                  <span className={`text-xs font-medium ${isUser ? 'text-accent' : 'text-ink-secondary'}`}>
-                    {isUser ? '我' : isTool ? '工具结果' : 'AI'}
-                  </span>
-                  <span className="text-[11px] text-ink-muted">{formatTime(message.createdAt)}</span>
+            if (isUser) {
+              return (
+                <div key={message.id} className="flex justify-end">
+                  <div className="max-w-[88%] border border-border bg-muted px-4 py-3">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                        Request
+                      </span>
+                      <span className="font-mono text-[9px] text-muted-foreground">
+                        {formatTime(message.createdAt)}
+                      </span>
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                      {message.content ?? ''}
+                    </p>
+                  </div>
                 </div>
-                {isUser || isTool ? (
-                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
+              );
+            }
+            if (isTool) {
+              return (
+                <article key={message.id} className="border border-border bg-muted/50 p-3">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                      Tool result
+                    </span>
+                    <span className="font-mono text-[9px] text-muted-foreground">
+                      {formatTime(message.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
                     {message.content ?? ''}
                   </p>
-                ) : (
+                </article>
+              );
+            }
+            return (
+              <article key={message.id} className={cn('border border-border bg-card')}>
+                <div className="flex items-baseline justify-between gap-4 border-b border-border px-4 py-2">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-primary">
+                    Analysis / AI
+                  </span>
+                  <span className="font-mono text-[9px] text-muted-foreground">
+                    {formatTime(message.createdAt)}
+                  </span>
+                </div>
+                <div className="p-4">
                   <StreamingMarkdown content={message.content ?? ''} />
-                )}
+                </div>
               </article>
             );
           })

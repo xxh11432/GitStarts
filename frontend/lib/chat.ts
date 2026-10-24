@@ -78,7 +78,13 @@ export class ChatError extends Error {
  * 事件契约：meta / status / tool / repos / delta / done / error。
  */
 export async function streamChat(
-  body: { conversationId?: number | null; ideaId?: number | null; messages: ChatPayloadMessage[] },
+  body: {
+    conversationId?: number | null;
+    ideaId?: number | null;
+    messages: ChatPayloadMessage[];
+    /** 重试同一轮时置 false，避免服务端重复落库用户消息 */
+    persistUser?: boolean;
+  },
   handlers: ChatHandlers,
   signal?: AbortSignal,
 ): Promise<void> {

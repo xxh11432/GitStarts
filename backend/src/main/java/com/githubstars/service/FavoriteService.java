@@ -13,10 +13,12 @@ import com.githubstars.entity.Repository;
 import com.githubstars.exception.FavoriteNotFoundException;
 import com.githubstars.mapper.FavoriteMapper;
 import com.githubstars.mapper.RepositoryMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -87,8 +89,38 @@ public class FavoriteService {
         favorite.setNote(normalizeNote(request.note()));
         favorite.setCreatedAt(now);
         favorite.setUpdatedAt(now);
-        favoriteMapper.insert(favorite);
+        try {
+            favoriteMapper.insert(favorite);
+        } catch (DuplicateKeyException e) {
+            // 并发重复收藏：由 uk_user_repo 兜底，回查并复用已存在的记录
+            return recoverConcurrent(userId, repo.getId(), request.note(), now, repo);
+        }
         return toResponse(favorite, repo);
+    }
+
+    private FavoriteResponse recoverConcurrent(Long userId, Long repoId, String note, LocalDateTime now,
+                                               Repository repo) {
+        Favorite concurrent = favoriteMapper.selectOne(new LambdaQueryWrapper<Favorite>()
+                .eq(Favorite::getUserId, userId)
+                .eq(Favorite::getRepoId, repoId));
+        if (concurrent == null) {
+            throw new IllegalStateException("收藏写入冲突，请重试");
+        }
+        if (note != null) {
+            String normalized = normalizeNote(note);
+            LambdaUpdateWrapper<Favorite> updateWrapper = new LambdaUpdateWrapper<Favorite>()
+                    .eq(Favorite::getId, concurrent.getId())
+                    .set(Favorite::getUpdatedAt, now);
+            if (normalized == null) {
+                updateWrapper.setSql("note = NULL");
+            } else {
+                updateWrapper.set(Favorite::getNote, normalized);
+            }
+            favoriteMapper.update(null, updateWrapper);
+            concurrent.setNote(normalized);
+            concurrent.setUpdatedAt(now);
+        }
+        return toResponse(concurrent, repo);
     }
 
     public PageResult<FavoriteResponse> list(Long userId, int page, int size) {
@@ -114,7 +146,11 @@ public class FavoriteService {
                 .filter(favorite -> repos.containsKey(favorite.getRepoId()))
                 .map(favorite -> toResponse(favorite, repos.get(favorite.getRepoId())))
                 .collect(Collectors.toList());
-        return new PageResult<>(items, result.getTotal(), current, pageSize);
+        // total 只统计仓库仍存在的收藏，避免与过滤后的 items 数量不一致
+        long total = favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>()
+                .eq(Favorite::getUserId, userId)
+                .inSql(Favorite::getRepoId, "SELECT id FROM repositories"));
+        return new PageResult<>(items, total, current, pageSize);
     }
 
     public FavoriteStatusResponse status(Long userId, String fullName) {
@@ -126,6 +162,36 @@ public class FavoriteService {
             return new FavoriteStatusResponse(false, null, null);
         }
         return new FavoriteStatusResponse(true, favorite.getId(), favorite.getNote());
+    }
+
+    /**
+     * 列表页批量查询收藏状态：一次请求覆盖当前页所有仓库。
+     */
+    public Map<String, FavoriteStatusResponse> statuses(Long userId, List<String> fullNames) {
+        if (fullNames == null || fullNames.isEmpty()) {
+            return Map.of();
+        }
+        List<String> normalized = fullNames.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(this::normalizeFullName)
+                .distinct()
+                .limit(50)
+                .toList();
+        if (normalized.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, FavoriteStatusResponse> result = new LinkedHashMap<>();
+        for (String name : normalized) {
+            result.put(name, new FavoriteStatusResponse(false, null, null));
+        }
+        List<Favorite> favorites = favoriteMapper.selectList(new LambdaQueryWrapper<Favorite>()
+                .eq(Favorite::getUserId, userId)
+                .in(Favorite::getFullName, normalized));
+        for (Favorite favorite : favorites) {
+            result.put(favorite.getFullName(),
+                    new FavoriteStatusResponse(true, favorite.getId(), favorite.getNote()));
+        }
+        return result;
     }
 
     public FavoriteResponse update(Long userId, Long id, FavoriteUpdateRequest request) {

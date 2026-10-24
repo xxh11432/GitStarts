@@ -39,8 +39,9 @@ public class ComparisonController {
     @GetMapping
     public PageResult<ComparisonSummary> list(@AuthenticationPrincipal OAuth2UserPrincipal principal,
                                               @RequestParam(defaultValue = "1") int page,
-                                              @RequestParam(defaultValue = "20") int size) {
-        return comparisonService.list(principal.getUserId(), page, size);
+                                              @RequestParam(defaultValue = "20") int size,
+                                              @RequestParam(required = false) Long ideaId) {
+        return comparisonService.list(principal.getUserId(), page, size, ideaId);
     }
 
     @PostMapping("/{id}/share")

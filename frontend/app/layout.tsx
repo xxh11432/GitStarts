@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
+import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
 import './globals.css';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Toaster } from '@/components/ui/sonner';
 import Navbar from '@/components/Navbar';
 
 export const metadata: Metadata = {
@@ -9,16 +14,21 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN">
-      <body className="min-h-screen bg-background text-ink">
-        <Navbar />
-        <main className="mx-auto w-full max-w-container px-4 pb-16 pt-8 sm:px-6">{children}</main>
-        <footer className="border-t border-line">
-          <div className="mx-auto flex max-w-container flex-col gap-2 px-4 py-8 text-sm text-ink-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <span>GitStars · 开源方案匹配与对比平台</span>
-            <span>数据来自 GitHub 公开仓库 README 与元信息</span>
-          </div>
-        </footer>
+    <html lang="zh-CN" className="font-sans">
+      <body className="flex min-h-screen flex-col bg-background text-foreground">
+        <TooltipProvider delayDuration={200}>
+          <Navbar />
+          <main className="mx-auto w-full max-w-container flex-1 px-4 pb-20 pt-8 sm:px-6 lg:px-8">
+            {children}
+          </main>
+          <footer className="border-t border-border">
+            <div className="mx-auto flex max-w-container flex-col gap-2 px-4 py-8 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+              <span>GitStars · Open-source decision ledger</span>
+              <span>Evidence from public README &amp; manifests</span>
+            </div>
+          </footer>
+          <Toaster />
+        </TooltipProvider>
       </body>
     </html>
   );

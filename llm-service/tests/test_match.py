@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from app.clients.vector import VectorHit
+from app.clients.vector import VectorHit, build_filter
 from app.core.config import Settings
 from app.graphs.match_graph import (
     MatchError,
@@ -297,7 +297,7 @@ def test_hard_filters_and_condition_states() -> None:
     )
     filters = collect_hard_filters(requirement)
     assert filters.platforms == ["windows", "macos"]
-    assert filters.licenses == ["MIT"]
+    assert filters.licenses == ["mit"]
     assert filters.min_stars == 100
     assert filters.active_within_days == 365
 
@@ -310,6 +310,30 @@ def test_hard_filters_and_condition_states() -> None:
     assert evaluate_condition(requirement.must[0], unknown, "").status == "miss"
     assert evaluate_condition(requirement.must[1], unknown, "").status == "unknown"
     assert evaluate_condition(requirement.must[3], unknown, "").status == "unknown"
+
+
+def test_language_and_license_are_normalized_for_filters_and_checks() -> None:
+    requirement = Requirement(
+        must=[
+            Condition(key="language", value="python"),
+            Condition(key="license", value="MIT"),
+        ]
+    )
+    filters = collect_hard_filters(requirement)
+    # GitHub 的语言名是 "Python"，许可证 spdx_id 常大写；过滤前必须归一化。
+    assert filters.languages == ["Python"]
+    assert filters.licenses == ["mit"]
+
+    repo = {"language": "Python", "license": "mit"}
+    assert evaluate_condition(requirement.must[0], repo, "").status == "hit"
+    assert evaluate_condition(requirement.must[1], repo, "").status == "hit"
+
+    vector_filter = build_filter(languages=filters.languages, licenses=filters.licenses)
+    assert vector_filter is not None
+    conditions = {condition.key: condition for condition in vector_filter.must}
+    assert "Python" in conditions["language"].match.any
+    assert "mit" in conditions["license"].match.any
+    assert "MIT" in conditions["license"].match.any
 
 
 def test_fit_candidate_breakdown_and_risks() -> None:
@@ -390,6 +414,42 @@ async def test_match_reports_backend_unavailable_when_recall_breaks(
     assert excinfo.value.code == "backend_unavailable"
 
 
+async def test_match_falls_back_to_popular_repos_when_vector_empty(
+    settings: Settings,
+) -> None:
+    class FallbackBackend(FakeBackend):
+        async def search_repos(self, **kwargs: Any) -> list[dict[str, Any]]:
+            if kwargs.get("q"):
+                return []
+            return [
+                {
+                    "fullName": "foo/popular",
+                    "description": "站内热门项目",
+                    "language": "Python",
+                    "license": "mit",
+                    "category": "人工智能",
+                    "platform": "linux",
+                    "stars": 9000,
+                    "pushedAt": "2025-09-01T00:00:00",
+                    "topics": [],
+                }
+            ]
+
+    runner = _runner(settings, FallbackBackend(), FakeVector([]), FakeLlm())
+    events = await _collect(
+        runner,
+        MatchRequest(
+            raw_text="需要一个知识库",
+            structured=Requirement(goal="知识库", keywords=["知识库"]),
+        ),
+    )
+    candidates = [event.data for event in events if event.name == "candidate"]
+    assert len(candidates) == 1
+    assert candidates[0]["repo"]["fullName"] == "foo/popular"
+    # 兜底候选没有向量分数，契合度应明显低于语义召回。
+    assert candidates[0]["fit"] < 0.5
+
+
 async def test_rerank_adjusts_fit(settings: Settings) -> None:
     backend = FakeBackend()
     rerank = RerankResult(
@@ -426,3 +486,55 @@ async def test_rerank_adjusts_fit(settings: Settings) -> None:
     candidates = [event.data for event in events if event.name == "candidate"]
     assert len(candidates) == 2  # rerank 需要至少 3 个候选，这里保持未重排
     assert all(candidate["fitted"] is False for candidate in candidates)
+
+
+async def test_rerank_runs_with_three_candidates(settings: Settings) -> None:
+    backend = FakeBackend(
+        [
+            *FakeBackend().repos,
+            {
+                "fullName": "foo/next",
+                "description": "新一代知识库",
+                "language": "Python",
+                "license": "MIT",
+                "category": "AI",
+                "platform": "linux",
+                "stars": 800,
+                "pushedAt": "2025-08-01T00:00:00",
+                "topics": [],
+            },
+        ]
+    )
+    rerank = RerankResult(
+        items=[
+            RerankItem(
+                full_name="langgenius/dify",
+                delta=0.1,
+                reasons=["功能覆盖完整"],
+                risks=[],
+            )
+        ]
+    )
+    vector = FakeVector(
+        _hits()
+        + [
+            VectorHit(
+                repo_id=3,
+                full_name="foo/next",
+                score=0.7,
+                section="README",
+                content="新一代知识库，支持 Docker 部署。",
+                source_url="",
+            )
+        ]
+    )
+    runner = _runner(settings, backend, vector, FakeLlm(rerank=rerank))
+    events = await _collect(
+        runner,
+        MatchRequest(raw_text="AI 平台", structured=Requirement(goal="AI 平台")),
+    )
+    candidates = [event.data for event in events if event.name == "candidate"]
+    assert len(candidates) == 3
+    fitted = {item["repo"]["fullName"]: item["fitted"] for item in candidates}
+    assert fitted["langgenius/dify"] is True
+    assert fitted["foo/next"] is False

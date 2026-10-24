@@ -18,10 +18,11 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
 
-# Build-time embedding warmup keeps the first request from downloading a model.
-# fastembed has no ONNX build of BAAI/bge-m3, so the local default is the
-# supported 1024-dim multilingual model; set PREWARM_MODELS=false for fast builds.
-ARG PREWARM_MODELS=true
+# 默认不在构建期下载模型：容器启动时由 docker-entrypoint.sh 检查 /models
+# （Compose 中的 model-cache 卷）是否已有缓存，缺失才联网下载并持久化。
+# 需要把模型打进镜像时再设 PREWARM_MODELS=true。
+# fastembed 没有 BAAI/bge-m3 的 ONNX 版本，本地默认使用 1024 维多语言模型。
+ARG PREWARM_MODELS=false
 ARG LLM_EMBEDDING_MODEL=intfloat/multilingual-e5-large
 
 ENV PYTHONUNBUFFERED=1 \
@@ -40,11 +41,13 @@ RUN groupadd --system app \
 COPY --from=builder /app/.venv /app/.venv
 COPY app ./app
 COPY worker ./worker
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 
-RUN if [ "$PREWARM_MODELS" = "true" ]; then \
+RUN chmod +x /app/docker-entrypoint.sh \
+    && if [ "$PREWARM_MODELS" = "true" ]; then \
         python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='${LLM_EMBEDDING_MODEL}', cache_dir='/models')"; \
     else \
-        echo "skip embedding warmup"; \
+        echo "skip embedding warmup: 模型在容器启动时优先复用 /models 缓存"; \
     fi \
     && chown -R app:app /models
 
@@ -52,4 +55,5 @@ USER app
 
 EXPOSE 8081
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]

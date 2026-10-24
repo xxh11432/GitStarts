@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { platformLabel } from '@/lib/labels';
 import type { ChatRepo } from '@/lib/chat';
 
 function formatCount(value?: number): string {
@@ -9,36 +10,36 @@ function formatCount(value?: number): string {
 }
 
 export default function RepoMiniCard({ repo }: { repo: ChatRepo }) {
+  const platform = repo.platform && repo.platform !== 'other' ? platformLabel(repo.platform) : undefined;
   return (
-    <article className="rounded-card border border-line bg-background p-3 transition-colors duration-150 hover:border-accent">
+    <article className="border border-border bg-card p-3 transition-colors hover:border-primary/40">
       <div className="flex items-baseline justify-between gap-2">
         <Link
           href={`/repos/${repo.fullName}`}
-          className="min-w-0 truncate text-sm font-medium text-ink hover:text-accent"
+          className="min-w-0 truncate font-mono text-[12px] font-medium text-foreground decoration-primary decoration-2 underline-offset-4 hover:underline"
         >
           {repo.fullName}
         </Link>
-        {repo.stars !== undefined && (
-          <span className="shrink-0 text-xs tabular-nums text-ink-muted">
-            {formatCount(repo.stars)} stars
+        {repo.stars !== undefined ? (
+          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+            ★ {formatCount(repo.stars)}
           </span>
-        )}
+        ) : null}
       </div>
-      {repo.description && (
-        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-secondary">
+      {repo.description ? (
+        <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
           {repo.description}
         </p>
-      )}
-      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-ink-muted">
-        {repo.language && (
-          <span className="rounded-full border border-line px-1.5 py-0.5">{repo.language}</span>
-        )}
-        {repo.license && (
-          <span className="rounded-full border border-line px-1.5 py-0.5">{repo.license}</span>
-        )}
-        {repo.platform && repo.platform !== 'other' && (
-          <span className="rounded-full border border-line px-1.5 py-0.5">{repo.platform}</span>
-        )}
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {[repo.language, repo.license, platform].filter(Boolean).map((label) => (
+          <span
+            key={label}
+            className="border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            {label}
+          </span>
+        ))}
       </div>
     </article>
   );

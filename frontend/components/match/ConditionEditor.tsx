@@ -1,5 +1,18 @@
 'use client';
 
+import { Plus, Trash2 } from 'lucide-react';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { MatchCondition, Requirement } from '@/lib/match';
 
 const KEY_OPTIONS: { value: string; label: string; hint: string }[] = [
@@ -41,48 +54,66 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
   };
 
   const renderConditions = (field: 'must' | 'should', title: string, hint: string) => (
-    <section>
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <section className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-ink">{title}</h3>
-          <p className="text-xs text-ink-muted">{hint}</p>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           disabled={disabled}
           onClick={() => setConditions(field, [...requirement[field], { key: 'platform', value: '' }])}
-          className="rounded-md border border-line bg-background px-2.5 py-1 text-xs text-ink-secondary transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+          className="rounded-none"
         >
+          <Plus className="size-3.5" data-icon="inline-start" />
           添加
-        </button>
+        </Button>
       </div>
+
       {requirement[field].length === 0 ? (
-        <p className="rounded-card border border-dashed border-line px-3 py-3 text-xs text-ink-muted">
+        <p className="border border-dashed border-border px-3 py-3 text-[11px] text-muted-foreground">
           暂无{title}
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="flex flex-col gap-2">
           {requirement[field].map((condition, index) => {
             const known = KEY_OPTIONS.some((option) => option.value === condition.key);
             return (
-              <li key={`${field}-${index}`} className="flex flex-wrap items-center gap-2">
-                <select
-                  aria-label={`${title}条件 ${index + 1}`}
+              <li
+                key={`${field}-${index}`}
+                className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_minmax(0,1fr)_auto] sm:items-center"
+              >
+                <Select
                   value={condition.key}
                   disabled={disabled}
-                  onChange={(event) =>
-                    setConditions(field, updateCondition(requirement[field], index, { key: event.target.value }))
+                  onValueChange={(value) =>
+                    setConditions(
+                      field,
+                      updateCondition(requirement[field], index, { key: value }),
+                    )
                   }
-                  className="rounded-md border border-line bg-background px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
                 >
-                  {!known && <option value={condition.key}>{condition.key}</option>}
-                  {KEY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <input
+                  <SelectTrigger
+                    aria-label={`${title}条件 ${index + 1}`}
+                    className="h-9 rounded-none font-mono text-[11px]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!known ? (
+                      <SelectItem value={condition.key}>{condition.key}</SelectItem>
+                    ) : null}
+                    {KEY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
                   aria-label={`${title}条件 ${index + 1} 的值`}
                   value={asInputValue(condition.value)}
                   disabled={disabled}
@@ -93,10 +124,13 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
                     )
                   }
                   placeholder={KEY_OPTIONS.find((option) => option.value === condition.key)?.hint}
-                  className="min-w-0 flex-1 rounded-md border border-line bg-background px-2 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
+                  className="h-9 rounded-none font-mono text-[11px]"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`删除${title}条件 ${index + 1}`}
                   disabled={disabled}
                   onClick={() =>
                     setConditions(
@@ -104,10 +138,10 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
                       requirement[field].filter((_, current) => current !== index),
                     )
                   }
-                  className="rounded-md px-2 py-1 text-xs text-ink-muted transition-colors hover:text-danger disabled:opacity-50"
+                  className="justify-self-start text-muted-foreground hover:text-destructive sm:justify-self-end"
                 >
-                  删除
-                </button>
+                  <Trash2 className="size-3.5" />
+                </Button>
               </li>
             );
           })}
@@ -117,63 +151,76 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
   );
 
   return (
-    <section className="rounded-card border border-line bg-background p-5 shadow-card">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section className="border border-border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-2.5">
         <div>
-          <h2 className="text-base font-semibold text-ink">结构化条件</h2>
-          <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
+            Structured conditions / 结构化条件
+          </h2>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
             AI 只抽取你明确说过的条件；这里可以修正或补充，再按新条件重新匹配。
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={onApply}
           disabled={disabled}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-none"
         >
           按这些条件匹配
-        </button>
+        </Button>
       </div>
 
-      {requirement.degraded && (
-        <p className="mb-4 rounded-card border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
-          模型未能稳定抽取条件，以下内容按原文直接检索生成，请人工核对后再使用。
-        </p>
-      )}
+      <div className="flex flex-col gap-5 p-4">
+        {requirement.degraded ? (
+          <Alert className="rounded-none border-info/40 bg-info/5 px-3 py-2 text-info">
+            <AlertDescription className="text-[11px] text-info">
+              模型未能稳定抽取条件，以下内容按原文直接检索生成，请人工核对后再使用。
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
-      <label className="block">
-        <span className="text-sm font-semibold text-ink">目标</span>
-        <input
-          value={requirement.goal}
-          disabled={disabled}
-          onChange={(event) => onChange({ ...requirement, goal: event.target.value })}
-          className="mt-1 w-full rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
-        />
-      </label>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="requirement-goal" className="text-sm font-semibold text-foreground">
+            目标
+          </Label>
+          <Input
+            id="requirement-goal"
+            value={requirement.goal}
+            disabled={disabled}
+            onChange={(event) => onChange({ ...requirement, goal: event.target.value })}
+            className="h-9 rounded-none"
+          />
+        </div>
 
-      <div className="mt-4 grid gap-5 md:grid-cols-2">
-        {renderConditions('must', '硬条件', '不满足会被扣掉条件覆盖分')}
-        {renderConditions('should', '偏好条件', '用于重排时加分，不作硬性过滤')}
+        <div className="grid gap-6 md:grid-cols-2">
+          {renderConditions('must', '硬条件', '不满足会被扣掉条件覆盖分')}
+          {renderConditions('should', '偏好条件', '用于重排时加分，不作硬性过滤')}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="requirement-exclude" className="text-sm font-semibold text-foreground">
+            排除关键词
+          </Label>
+          <Input
+            id="requirement-exclude"
+            value={requirement.exclude.join(', ')}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange({
+                ...requirement,
+                exclude: event.target.value
+                  .split(/[,，]/)
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+            placeholder="多个关键词用逗号分隔"
+            className="h-9 rounded-none"
+          />
+        </div>
       </div>
-
-      <label className="mt-4 block">
-        <span className="text-sm font-semibold text-ink">排除关键词</span>
-        <input
-          value={requirement.exclude.join(', ')}
-          disabled={disabled}
-          onChange={(event) =>
-            onChange({
-              ...requirement,
-              exclude: event.target.value
-                .split(/[,，]/)
-                .map((item) => item.trim())
-                .filter(Boolean),
-            })
-          }
-          placeholder="多个关键词用逗号分隔"
-          className="mt-1 w-full rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
-        />
-      </label>
     </section>
   );
 }

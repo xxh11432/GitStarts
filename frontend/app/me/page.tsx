@@ -1,9 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ArrowUpRight } from 'lucide-react';
+
 import AccountDangerZone from '@/components/me/AccountDangerZone';
 import ProfileEditor from '@/components/me/ProfileEditor';
 import RecommendationList from '@/components/me/RecommendationList';
 import QuotaBadge from '@/components/QuotaBadge';
+import SectionHeading from '@/components/section-heading';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   fetchMe,
   fetchMyComparisons,
@@ -38,137 +42,184 @@ export default async function MePage() {
     fetchMyConversations(1, 5),
   ]);
 
-  const favoriteCount = favorites?.total ?? 0;
-  const ideaCount = ideas?.total ?? 0;
-  const comparisonCount = comparisons?.total ?? 0;
-  const conversationCount = conversations?.total ?? 0;
-
   const assets = [
     {
       title: '收藏仓库',
-      count: favoriteCount,
+      count: favorites?.total ?? 0,
       href: '/me/favorites',
       description: favorites?.items[0]?.repo.fullName ?? '收藏会在所有设备与会话间同步',
     },
     {
       title: '对比记录',
-      count: comparisonCount,
+      count: comparisons?.total ?? 0,
       href: '/me/comparisons',
       description: comparisons?.items[0]?.repoKeys.join(' vs ') ?? '保存每次对比结论并支持只读分享',
     },
     {
       title: '会话历史',
-      count: conversationCount,
+      count: conversations?.total ?? 0,
       href: '/me/conversations',
       description: conversations?.items[0]?.title ?? '回看与 AI 的历史对话',
     },
     {
       title: '我的想法',
-      count: ideaCount,
+      count: ideas?.total ?? 0,
       href: '/me/ideas',
       description: ideas?.items[0]?.title ?? '结构化需求可继续用于匹配与对比',
     },
   ];
 
   return (
-    <div className="space-y-8">
-      <section className="flex flex-wrap items-center gap-4 rounded-card border border-line bg-background p-5 shadow-card">
-        {me.avatarUrl ? (
-          <img src={me.avatarUrl} alt="" className="h-14 w-14 rounded-full border border-line" />
-        ) : (
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface text-xl text-ink-secondary">
-            {(me.nickname ?? '我').slice(0, 1)}
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-semibold text-ink">{me.nickname ?? 'GitHub 用户'}</h1>
-          <p className="mt-1 text-sm text-ink-muted">账号 ID：{me.id} · 通过 GitHub 登录</p>
-        </div>
-        <div className="w-full shrink-0 sm:w-72">
-          <QuotaBadge initial={me.quota} />
+    <div className="flex flex-col gap-8">
+      <section className="min-w-0 border border-border bg-card">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex items-center gap-4 p-5">
+            <Avatar className="size-16 rounded-none">
+              {me.avatarUrl ? <AvatarImage src={me.avatarUrl} alt="" /> : null}
+              <AvatarFallback className="rounded-none bg-primary font-display text-2xl text-primary-foreground">
+                {(me.nickname ?? '我').slice(0, 1)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Account dossier
+              </p>
+              <h1 className="mt-1 truncate font-display text-title font-semibold text-foreground">
+                {me.nickname ?? 'GitHub 用户'}
+              </h1>
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                ID {me.id} · via GitHub
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-border p-4 lg:border-l lg:border-t-0">
+            <QuotaBadge initial={me.quota} />
+          </div>
         </div>
       </section>
 
       <ProfileEditor initial={profile ?? EMPTY_PROFILE} />
 
-      <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-base font-semibold text-ink">为你推荐</h2>
-            <p className="mt-1 text-xs text-ink-muted">按技能、兴趣与偏好匹配，已排除收藏过的仓库。</p>
-          </div>
-        </div>
+      <section className="flex flex-col gap-3">
+        <SectionHeading index="02" title="为你推荐" count={recommendations?.length ?? 0} />
+        <p className="text-[11px] text-muted-foreground">
+          按技能、兴趣与偏好匹配，已排除收藏过的仓库。
+        </p>
         <RecommendationList items={recommendations ?? []} />
       </section>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-ink">我的资产</h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="flex flex-col gap-3">
+        <SectionHeading index="03" title="我的资产" />
+        <div className="grid gap-px border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
           {assets.map((asset) => (
             <Link
               key={asset.title}
               href={asset.href}
-              className="rounded-card border border-line bg-background p-4 shadow-card transition-colors hover:border-accent"
+              className="group flex flex-col gap-2 bg-card p-4 transition-colors hover:bg-muted"
             >
               <div className="flex items-baseline justify-between gap-2">
-                <h3 className="text-sm font-medium text-ink">{asset.title}</h3>
-                <span className="text-lg font-semibold text-accent">{asset.count}</span>
+                <h3 className="text-[13px] font-medium text-foreground">{asset.title}</h3>
+                <span className="font-display text-xl font-semibold tabular-nums text-primary">
+                  {asset.count}
+                </span>
               </div>
-              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-muted">{asset.description}</p>
+              <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                {asset.description}
+              </p>
+              <ArrowUpRight
+                className="mt-auto size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                aria-hidden
+              />
             </Link>
           ))}
         </div>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-card border border-line bg-background p-5 shadow-card">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-ink">最近对比</h2>
-            <Link href="/me/comparisons" className="text-xs text-accent hover:underline">
-              查看全部
+        <section className="min-w-0 border border-border bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+            <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
+              Recent comparisons / 最近对比
+            </h2>
+            <Link
+              href="/me/comparisons"
+              className="font-mono text-[10px] uppercase tracking-[0.1em] text-primary hover:underline"
+            >
+              全部
             </Link>
           </div>
-          {comparisons?.items.length ? (
-            <ul className="mt-3 space-y-2">
-              {comparisons.items.map((item) => (
-                <li key={item.id}>
-                  <Link href={`/me/comparisons/${item.id}`} className="block rounded-md border border-line px-3 py-2 hover:border-accent">
-                    <p className="truncate text-xs font-medium text-ink">{item.repoKeys.join(' vs ')}</p>
-                    <p className="mt-1 text-[11px] text-ink-muted">
-                      {formatTime(item.createdAt)} · {item.shared ? '已分享' : '未分享'}
-                    </p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-xs text-ink-muted">还没有对比记录。</p>
-          )}
+          <div className="p-4">
+            {comparisons?.items.length ? (
+              <ul className="flex flex-col gap-2">
+                {comparisons.items.map((item, index) => (
+                  <li key={item.id}>
+                    <Link
+                      href={`/me/comparisons/${item.id}`}
+                      className="group flex min-w-0 items-start gap-3 border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
+                    >
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-[12px] text-foreground">
+                          {item.repoKeys.join(' vs ')}
+                        </p>
+                        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                          {formatTime(item.createdAt)} · {item.shared ? 'shared' : 'private'}
+                        </p>
+                      </div>
+                      <ArrowUpRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">还没有对比记录。</p>
+            )}
+          </div>
         </section>
 
-        <section className="rounded-card border border-line bg-background p-5 shadow-card">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-ink">最近会话</h2>
-            <Link href="/me/conversations" className="text-xs text-accent hover:underline">
-              查看全部
+        <section className="min-w-0 border border-border bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+            <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
+              Recent conversations / 最近会话
+            </h2>
+            <Link
+              href="/me/conversations"
+              className="font-mono text-[10px] uppercase tracking-[0.1em] text-primary hover:underline"
+            >
+              全部
             </Link>
           </div>
-          {conversations?.items.length ? (
-            <ul className="mt-3 space-y-2">
-              {conversations.items.map((item) => (
-                <li key={item.id}>
-                  <Link href={`/me/conversations/${item.id}`} className="block rounded-md border border-line px-3 py-2 hover:border-accent">
-                    <p className="truncate text-xs font-medium text-ink">{item.title || `会话 #${item.id}`}</p>
-                    <p className="mt-1 text-[11px] text-ink-muted">
-                      {item.messageCount} 条消息 · {formatTime(item.updatedAt)}
-                    </p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-xs text-ink-muted">还没有会话记录。</p>
-          )}
+          <div className="p-4">
+            {conversations?.items.length ? (
+              <ul className="flex flex-col gap-2">
+                {conversations.items.map((item, index) => (
+                  <li key={item.id}>
+                    <Link
+                      href={`/me/conversations/${item.id}`}
+                      className="group flex min-w-0 items-start gap-3 border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
+                    >
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] text-foreground">
+                          {item.title || `会话 #${item.id}`}
+                        </p>
+                        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                          {item.messageCount} messages · {formatTime(item.updatedAt)}
+                        </p>
+                      </div>
+                      <ArrowUpRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">还没有会话记录。</p>
+            )}
+          </div>
         </section>
       </div>
 

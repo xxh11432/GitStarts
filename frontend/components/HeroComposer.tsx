@@ -1,8 +1,13 @@
 'use client';
 
 import { useRef, useState, type FormEvent } from 'react';
+import { ArrowUpRight, RotateCcw, Square } from 'lucide-react';
+
 import RepoMiniCard from '@/components/RepoMiniCard';
 import StreamingMarkdown from '@/components/StreamingMarkdown';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ChatError,
   streamChat,
@@ -54,7 +59,7 @@ export default function HeroComposer() {
     setMessages(next);
   };
 
-  const runTurn = async (text: string, base: UiMessage[]) => {
+  const runTurn = async (text: string, base: UiMessage[], options: { persistUser?: boolean } = {}) => {
     const assistantIndex = base.length + 1;
     setError(null);
     updateMessages([...base, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
@@ -71,7 +76,11 @@ export default function HeroComposer() {
 
     try {
       await streamChat(
-        { conversationId: conversationIdRef.current, messages: payload },
+        {
+          conversationId: conversationIdRef.current,
+          messages: payload,
+          persistUser: options.persistUser,
+        },
         {
           onMeta: (meta) => {
             if (typeof meta.conversationId === 'number') {
@@ -150,77 +159,102 @@ export default function HeroComposer() {
       return;
     }
     const userMessage = current[end - 1];
-    void runTurn(userMessage.content, current.slice(0, end - 1));
+    // 已产生输出说明上一轮用户消息已落库，重试时不再重复写入
+    const persistUser = current
+      .slice(end)
+      .every((message) => !message.content && !(message.repos?.length));
+    void runTurn(userMessage.content, current.slice(0, end - 1), { persistUser });
   };
 
   const streaming = phase === 'streaming';
   const canRetry = !streaming && error !== null && messagesRef.current.some((m) => m.role === 'user');
 
   return (
-    <div id="composer" className="mx-auto mt-8 w-full max-w-3xl text-left">
-      {messages.length > 0 && (
-        <div className="mb-4 space-y-4" aria-live="polite" aria-busy={streaming}>
+    <div id="composer" className="w-full">
+      {messages.length > 0 ? (
+        <div
+          className="mb-5 flex flex-col gap-4"
+          aria-live="polite"
+          aria-busy={streaming}
+        >
           {messages.map((message, index) =>
             message.role === 'user' ? (
               <div key={index} className="flex justify-end">
-                <p className="max-w-[85%] whitespace-pre-wrap rounded-card bg-surface px-4 py-2.5 text-sm leading-relaxed text-ink">
-                  {message.content}
-                </p>
+                <div className="max-w-[88%] border border-border bg-muted px-4 py-2.5">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Request
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                    {message.content}
+                  </p>
+                </div>
               </div>
             ) : (
-              <div
-                key={index}
-                className="rounded-card border border-line bg-background p-4 shadow-card"
-              >
-                {message.content ? (
-                  <StreamingMarkdown content={message.content} />
-                ) : streaming && index === messages.length - 1 ? (
-                  <p className="text-sm text-ink-muted">{STATUS_TEXT[status ?? 'thinking']}</p>
-                ) : null}
+              <article key={index} className="border border-border bg-background">
+                <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-primary">
+                    Analysis / 证据回答
+                  </span>
+                  {message.stopped ? (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+                      已停止
+                    </span>
+                  ) : null}
+                </header>
+                <div className="p-4">
+                  {message.content ? (
+                    <StreamingMarkdown content={message.content} />
+                  ) : streaming && index === messages.length - 1 ? (
+                    <p className="animate-pulse font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                      {STATUS_TEXT[status ?? 'thinking']}
+                    </p>
+                  ) : null}
 
-                {message.repos && message.repos.length > 0 && (
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {message.repos.map((repo) => (
-                      <RepoMiniCard key={repo.fullName} repo={repo} />
-                    ))}
-                  </div>
-                )}
-
-                {message.stopped && (
-                  <p className="mt-2 text-xs text-ink-muted">已停止生成</p>
-                )}
-              </div>
+                  {message.repos && message.repos.length > 0 ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {message.repos.map((repo) => (
+                        <RepoMiniCard key={repo.fullName} repo={repo} />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </article>
             ),
           )}
         </div>
-      )}
+      ) : null}
 
-      {error && (
-        <div
-          role="alert"
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
+      {error ? (
+        <Alert
+          variant="destructive"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-none border-destructive/40 bg-destructive/5 px-3 py-2"
         >
-          <span>{error}</span>
-          {canRetry && (
-            <button
-              type="button"
-              onClick={retry}
-              className="rounded-md border border-danger/40 px-2 py-1 text-xs font-medium transition-colors hover:bg-danger/10"
-            >
+          <AlertDescription className="text-xs">{error}</AlertDescription>
+          {canRetry ? (
+            <Button type="button" variant="outline" size="sm" onClick={retry}>
+              <RotateCcw className="size-3.5" data-icon="inline-start" />
               重试
-            </button>
-          )}
-        </div>
-      )}
+            </Button>
+          ) : null}
+        </Alert>
+      ) : null}
 
       <form
         onSubmit={submit}
-        className="rounded-card border border-line bg-background p-3 shadow-card focus-within:border-accent"
+        className="border border-border bg-card shadow-hard transition-colors focus-within:border-primary/60"
       >
-        <label htmlFor="idea-input" className="sr-only">
-          描述你的需求
-        </label>
-        <textarea
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2">
+          <label
+            htmlFor="idea-input"
+            className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+          >
+            Request intake / 需求登记
+          </label>
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            {input.length}/4000
+          </span>
+        </div>
+        <Textarea
           id="idea-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -233,33 +267,27 @@ export default function HeroComposer() {
           rows={3}
           maxLength={4000}
           placeholder="例如：帮我找一个可 Docker 自托管、MIT 协议的中文全文检索知识库"
-          className="w-full resize-none border-0 bg-transparent px-2 py-1.5 text-body text-ink placeholder:text-ink-muted focus:outline-none"
+          className="min-h-[96px] resize-none rounded-none border-0 bg-transparent px-4 py-3 text-body text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
         />
-        <div className="flex items-center justify-between gap-3 px-1 pt-2">
-          <p className="text-xs text-ink-muted">
-            AI 会检索仓库库并给出候选；许可证与部署方式请以项目仓库为准
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2.5">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Enter 发送 · Shift + Enter 换行 · 许可证与部署方式以仓库原文为准
           </p>
           {streaming ? (
-            <button
-              type="button"
-              onClick={stop}
-              className="shrink-0 rounded-md border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-secondary transition-colors hover:text-ink"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={stop} className="shrink-0">
+              <Square className="size-3.5" data-icon="inline-start" />
               停止
-            </button>
+            </Button>
           ) : (
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <Button type="submit" size="sm" disabled={!input.trim()} className="shrink-0">
               {messages.length > 0 ? '继续提问' : '开始对话'}
-            </button>
+              <ArrowUpRight className="size-3.5" data-icon="inline-end" />
+            </Button>
           )}
         </div>
       </form>
-      <p className="mt-2 text-center text-xs text-ink-muted">
-        Enter 发送，Shift + Enter 换行；回答基于站内仓库数据，信息不足时会明确说明
+      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        Answers are grounded in indexed README evidence · 信息不足时会明确说明
       </p>
     </div>
   );

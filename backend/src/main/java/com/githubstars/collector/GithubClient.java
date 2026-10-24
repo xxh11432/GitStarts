@@ -53,6 +53,25 @@ public class GithubClient {
         return parse(body);
     }
 
+    /**
+     * GitHub GraphQL：用于批量读取 latestRelease（一次 50 个仓库，远低于逐个 REST 调用）。
+     */
+    public JsonNode graphql(String query) {
+        restRateLimiter.acquire();
+        String body = restClient.post()
+                .uri("/graphql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(java.util.Map.of("query", query))
+                .retrieve()
+                .body(String.class);
+        JsonNode node = parse(body);
+        if (node.has("errors") && node.path("errors").isArray() && node.path("errors").size() > 0) {
+            throw new GithubApiException("GitHub GraphQL 返回错误："
+                    + node.path("errors").path(0).path("message").asText("unknown"));
+        }
+        return node;
+    }
+
     public JsonNode getRepository(String owner, String name) {
         restRateLimiter.acquire();
         String body = restClient.get()

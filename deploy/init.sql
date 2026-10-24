@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS repositories (
     open_issues   INT DEFAULT 0,
     topics        JSON COMMENT '标签数组',
     category      VARCHAR(64) COMMENT '分类（由规则推导）',
-    platform      VARCHAR(32) COMMENT '平台（windows/mac/linux/android/ios/harmony/extension/other）',
+    platform      VARCHAR(32) COMMENT '主平台（windows/mac/linux/android/ios/harmony/extension/other）',
+    platforms     VARCHAR(255) COMMENT '多平台，逗号分隔',
+    latest_release_tag VARCHAR(64) COMMENT '最新 Release tag',
+    latest_release_at DATETIME,
+    release_checked_at DATETIME COMMENT '最近一次检查 Release 的时间',
     default_branch VARCHAR(64),
     pushed_at     DATETIME,
     created_at    DATETIME,
@@ -180,4 +184,32 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     tokens_out    BIGINT DEFAULT 0,
     PRIMARY KEY (user_id, day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ===== 升级兼容：给已存在的 repositories 表补列（可重复执行） =====
+DROP PROCEDURE IF EXISTS gs_add_column;
+DELIMITER $$
+CREATE PROCEDURE gs_add_column(IN tbl VARCHAR(64), IN col VARCHAR(64), IN ddl TEXT)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = tbl AND COLUMN_NAME = col
+    ) THEN
+        SET @ddl = ddl;
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
+DELIMITER ;
+
+CALL gs_add_column('repositories', 'platforms',
+    'ALTER TABLE repositories ADD COLUMN platforms VARCHAR(255) NULL COMMENT ''多平台，逗号分隔''');
+CALL gs_add_column('repositories', 'latest_release_tag',
+    'ALTER TABLE repositories ADD COLUMN latest_release_tag VARCHAR(64) NULL COMMENT ''最新 Release tag''');
+CALL gs_add_column('repositories', 'latest_release_at',
+    'ALTER TABLE repositories ADD COLUMN latest_release_at DATETIME NULL COMMENT ''最新 Release 时间''');
+CALL gs_add_column('repositories', 'release_checked_at',
+    'ALTER TABLE repositories ADD COLUMN release_checked_at DATETIME NULL COMMENT ''最近一次检查 Release 的时间''');
+
+DROP PROCEDURE IF EXISTS gs_add_column;
 

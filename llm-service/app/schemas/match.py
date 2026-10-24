@@ -28,6 +28,7 @@ class Requirement(CamelModel):
     must: list[Condition] = Field(default_factory=list, max_length=10)
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)
+    keywords: list[str] = Field(default_factory=list, max_length=6)
     degraded: bool = False
     notes: list[str] = Field(default_factory=list, max_length=10)
 
@@ -41,6 +42,7 @@ class LlmRequirement(CamelModel):
     must: list[Condition] = Field(default_factory=list, max_length=10)
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)
+    keywords: list[str] = Field(default_factory=list, max_length=6)
 
 
 class RerankItem(CamelModel):

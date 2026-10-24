@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import fnmatch
 import html
 import re
 from dataclasses import dataclass
@@ -141,12 +142,40 @@ class ReadmeFetcher:
 
         raise GithubFetchError(f"README 拉取失败：{full_name}（{last_error}）")
 
+    async def _resolve_manifest_path(
+        self, client: httpx.AsyncClient, full_name: str, candidate: str
+    ) -> str | None:
+        """contents API 不支持通配符：含 * 的候选先列仓库根目录再按文件名匹配。"""
+        if "*" not in candidate:
+            return candidate
+        try:
+            response = await client.get(f"/repos/{full_name}/contents/")
+        except httpx.HTTPError as exc:
+            logger.warning("manifest_list_failed", repo=full_name, error=type(exc).__name__)
+            return None
+        if response.status_code in (403, 429):
+            logger.warning("manifest_rate_limited", repo=full_name, status=response.status_code)
+            return None
+        if response.status_code >= 400:
+            return None
+        body = response.json()
+        if not isinstance(body, list):
+            return None
+        for entry in body:
+            name = str(entry.get("name") or "") if isinstance(entry, dict) else ""
+            if name and fnmatch.fnmatchcase(name, candidate):
+                return name
+        return None
+
     async def fetch_manifest(
         self, full_name: str, *, language: str | None
     ) -> FetchedManifest | None:
         """抓取一个关键 manifest（依赖/部署信息）；没有则返回 None。"""
         client = self._connect()
-        for path in manifest_paths(language):
+        for candidate in manifest_paths(language):
+            path = await self._resolve_manifest_path(client, full_name, candidate)
+            if not path:
+                continue
             try:
                 response = await client.get(f"/repos/{full_name}/contents/{path}")
             except httpx.HTTPError as exc:

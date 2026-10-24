@@ -77,10 +77,12 @@ services:
       - "8080"
 
   llm-service:
+    image: gitstars-llm-service:local
     build:
       context: ./llm-service
       args:
-        PREWARM_MODELS: ${PREWARM_MODELS:-true}
+        PREWARM_MODELS: ${PREWARM_MODELS:-false}
+        LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
     container_name: gs-llm-service
     restart: unless-stopped
     depends_on:
@@ -90,9 +92,10 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.himodels.ai/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-deepseek-ai/DeepSeek-V3}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-deepseek-v4-flash}
+      LLM_THINKING_MODE: ${LLM_THINKING_MODE:-disabled}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
       LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
       LLM_EMBEDDING_DIM: ${LLM_EMBEDDING_DIM:-1024}
@@ -106,7 +109,7 @@ services:
       QUOTA_CHAT_DAILY: ${QUOTA_CHAT_DAILY:-30}
       QUOTA_COMPARE_DAILY: ${QUOTA_COMPARE_DAILY:-3}
       MATCH_RECALL_LIMIT: ${MATCH_RECALL_LIMIT:-40}
-      MATCH_RERANK_LIMIT: ${MATCH_RERANK_LIMIT:-16}
+      MATCH_RERANK_LIMIT: ${MATCH_RERANK_LIMIT:-8}
       MATCH_CACHE_TTL_SECONDS: ${MATCH_CACHE_TTL_SECONDS:-600}
       COMPARE_EVIDENCE_TOPK: ${COMPARE_EVIDENCE_TOPK:-6}
       COMPARE_CACHE_TTL_SECONDS: ${COMPARE_CACHE_TTL_SECONDS:-604800}
@@ -132,10 +135,8 @@ services:
       start_period: 15s
 
   ingest-worker:
-    build:
-      context: ./llm-service
-      args:
-        PREWARM_MODELS: ${PREWARM_MODELS:-true}
+    # 与 llm-service 复用同一镜像，避免重复构建与重复预热 embedding 模型
+    image: gitstars-llm-service:local
     container_name: gs-ingest-worker
     restart: unless-stopped
     command: ["python", "-m", "worker"]
@@ -146,9 +147,10 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.himodels.ai/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-deepseek-ai/DeepSeek-V3}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-deepseek-v4-flash}
+      LLM_THINKING_MODE: ${LLM_THINKING_MODE:-disabled}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
       LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
       LLM_EMBEDDING_DIM: ${LLM_EMBEDDING_DIM:-1024}

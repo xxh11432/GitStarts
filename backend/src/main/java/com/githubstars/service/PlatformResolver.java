@@ -78,6 +78,37 @@ public class PlatformResolver {
         return best;
     }
 
+    /**
+     * 多平台版本：返回所有命中的平台（得分 ≥ 2），按得分降序；没有命中时回退到语言推断或 other。
+     */
+    public List<String> resolveAll(String description, String topicsJson, String language) {
+        String topics = normalize(topicsJson == null ? null : topicsJson.replaceAll("[\"\\[\\],]", " "));
+        String text = normalize(description);
+        String languagePlatform = language == null ? null
+                : LANGUAGE_RULES.get(language.trim().toLowerCase(Locale.ROOT));
+
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Pattern>> entry : PLATFORM_RULES.entrySet()) {
+            int score = matches(topics, entry.getValue()) * 2 + matches(text, entry.getValue()) * 2;
+            if (entry.getKey().equals(languagePlatform)) {
+                score++;
+            }
+            if (score > 0) {
+                scores.put(entry.getKey(), score);
+            }
+        }
+
+        List<String> result = scores.entrySet().stream()
+                .filter(entry -> entry.getValue() >= 2)
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .map(Map.Entry::getKey)
+                .toList();
+        if (!result.isEmpty()) {
+            return result;
+        }
+        return languagePlatform == null ? List.of(OTHER) : List.of(languagePlatform);
+    }
+
     private int matches(String text, List<Pattern> patterns) {
         if (text.isEmpty()) {
             return 0;

@@ -10,6 +10,8 @@ import com.githubstars.mapper.UserMapper;
 import com.githubstars.mapper.UserProfileMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 账号数据清理：删除账号时一并移除收藏、想法、对比、会话、画像与用量记录。
@@ -49,6 +51,12 @@ public class AccountService {
         userProfileMapper.delete(new LambdaQueryWrapper<UserProfile>().eq(UserProfile::getUserId, userId));
         usageDailyMapper.delete(new LambdaQueryWrapper<UsageDaily>().eq(UsageDaily::getUserId, userId));
         userMapper.deleteById(userId);
-        quotaService.clear(userId);
+        // Redis 不受数据库事务保护，放到提交之后清理，避免回滚时配额已被清空
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                quotaService.clear(userId);
+            }
+        });
     }
 }

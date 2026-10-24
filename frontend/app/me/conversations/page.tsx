@@ -1,8 +1,16 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ArrowUpRight } from 'lucide-react';
+
+import EmptyState from '@/components/empty-state';
+import PageHeader from '@/components/page-header';
+import Pagination from '@/components/me/Pagination';
+import { Button } from '@/components/ui/button';
 import { fetchMe, fetchMyConversations } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 20;
 
 const MODE_LABELS: Record<string, string> = {
   chat: 'AI 对话',
@@ -14,55 +22,77 @@ function formatTime(value?: string): string {
   return value ? value.slice(0, 16).replace('T', ' ') : '—';
 }
 
-export default async function ConversationsPage() {
+export default async function ConversationsPage({
+  searchParams,
+}: {
+  searchParams: { page?: string };
+}) {
   const me = await fetchMe();
   if (!me) {
     redirect('/login?next=/me/conversations');
   }
-  const page = await fetchMyConversations(1, 50);
+  const currentPage = Math.max(Number(searchParams.page) || 1, 1);
+  const data = await fetchMyConversations(currentPage, PAGE_SIZE);
+  const totalPages = Math.max(Math.ceil((data?.total ?? 0) / PAGE_SIZE), 1);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-widest text-accent">会话历史</p>
-          <h1 className="mt-2 text-2xl font-semibold text-ink">与 AI 的对话</h1>
-          <p className="mt-2 text-sm text-ink-secondary">会话按账号保存，重新登录后仍可回看。</p>
-        </div>
-        <Link href="/me" className="text-xs text-accent hover:underline">
-          返回个人中心
-        </Link>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        index="08"
+        eyebrow="Conversation history"
+        title="与 AI 的对话"
+        description="会话按账号保存，重新登录后仍可回看。"
+        actions={
+          <Button asChild variant="ghost" size="sm" className="rounded-none">
+            <Link href="/me">返回个人中心</Link>
+          </Button>
+        }
+      />
 
-      {page?.items.length ? (
-        <div className="space-y-3">
-          {page.items.map((item) => (
+      {data?.items.length ? (
+        <div className="flex flex-col gap-2">
+          {data.items.map((item, index) => (
             <Link
               key={item.id}
               href={`/me/conversations/${item.id}`}
-              className="block rounded-card border border-line bg-background p-4 shadow-card transition-colors hover:border-accent"
+              className="group flex items-start gap-3 border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="truncate text-sm font-semibold text-ink">{item.title || `会话 #${item.id}`}</h2>
-                  <p className="mt-1 text-[11px] text-ink-muted">
-                    {MODE_LABELS[item.mode] ?? item.mode} · {item.messageCount} 条消息 · {formatTime(item.updatedAt)}
-                  </p>
-                </div>
-                {item.ideaId ? (
-                  <span className="shrink-0 rounded bg-surface px-2 py-0.5 text-[11px] text-ink-muted">
-                    想法 #{item.ideaId}
-                  </span>
-                ) : null}
+              <span className="pt-0.5 font-mono text-[10px] text-muted-foreground">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-[13px] font-medium text-foreground">
+                  {item.title || `会话 #${item.id}`}
+                </h2>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                  {MODE_LABELS[item.mode] ?? item.mode} · {item.messageCount} messages ·{' '}
+                  {formatTime(item.updatedAt)}
+                </p>
               </div>
+              {item.ideaId ? (
+                <span className="shrink-0 border border-border bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                  想法 #{item.ideaId}
+                </span>
+              ) : null}
+              <ArrowUpRight
+                className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                aria-hidden
+              />
             </Link>
           ))}
         </div>
       ) : (
-        <p className="rounded-card border border-dashed border-line bg-surface p-6 text-sm text-ink-muted">
-          还没有会话记录。回首页向 AI 描述你的需求，对话会自动保存。
-        </p>
+        <EmptyState
+          title="还没有会话记录"
+          description="回首页向 AI 描述你的需求，对话会自动保存。"
+          action={
+            <Button asChild variant="outline" size="sm" className="rounded-none">
+              <Link href="/">回首页开始对话</Link>
+            </Button>
+          }
+        />
       )}
+      <Pagination page={currentPage} totalPages={totalPages} base="/me/conversations" />
     </div>
   );
 }

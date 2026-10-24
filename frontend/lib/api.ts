@@ -15,7 +15,9 @@ import type {
   Repo,
 } from './types';
 
-const INTERNAL = process.env.API_INTERNAL_URL;
+// 服务端渲染必须使用绝对地址；本地开发默认后端在 127.0.0.1:8080（Docker 内由 API_INTERNAL_URL 覆盖）
+const INTERNAL = process.env.API_INTERNAL_URL
+  || (process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8080' : '');
 export const API_BASE = INTERNAL ? `${INTERNAL}/api` : '/api';
 
 async function getJson<T>(url: string): Promise<T> {
@@ -92,33 +94,45 @@ export async function fetchSharedComparison(token: string): Promise<{
 }
 
 /**
- * 服务端读取当前登录用户的个人数据：透传会话 Cookie，未登录或失败时返回 null。
+ * 服务端读取当前登录用户的个人数据：透传会话 Cookie。
+ * 未登录/无权限返回 null；后端其他错误直接抛出，避免被误当成空数据。
  */
 async function getAuthedJson<T>(path: string): Promise<T | null> {
   const cookieHeader = cookies().toString();
   if (!cookieHeader) {
     return null;
   }
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: { cookie: cookieHeader },
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      return null;
-    }
-    return (await res.json()) as T;
-  } catch {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { cookie: cookieHeader },
+    cache: 'no-store',
+  });
+  if (res.status === 401 || res.status === 403 || res.status === 404) {
     return null;
   }
+  if (!res.ok) {
+    throw new Error(`请求失败：${res.status}`);
+  }
+  return (await res.json()) as T;
 }
 
 export async function fetchMyIdeas(page = 1, size = 20): Promise<PageResult<IdeaView> | null> {
   return getAuthedJson(`/ideas?page=${page}&size=${size}`);
 }
 
-export async function fetchMyComparisons(page = 1, size = 20): Promise<PageResult<ComparisonSummary> | null> {
-  return getAuthedJson(`/comparisons?page=${page}&size=${size}`);
+export async function fetchIdea(id: string | number): Promise<IdeaView | null> {
+  return getAuthedJson(`/ideas/${id}`);
+}
+
+export async function fetchMyComparisons(
+  page = 1,
+  size = 20,
+  ideaId?: number,
+): Promise<PageResult<ComparisonSummary> | null> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  if (ideaId) {
+    params.set('ideaId', String(ideaId));
+  }
+  return getAuthedJson(`/comparisons?${params.toString()}`);
 }
 
 export async function fetchComparison(id: string | number): Promise<ComparisonDetail | null> {
@@ -131,6 +145,18 @@ export async function fetchMyFavorites(page = 1, size = 20): Promise<PageResult<
 
 export async function fetchFavoriteStatus(fullName: string): Promise<FavoriteStatus | null> {
   return getAuthedJson(`/favorites/status?fullName=${encodeURIComponent(fullName)}`);
+}
+
+/** 列表页批量收藏状态：一次请求覆盖当前页所有仓库。 */
+export async function fetchFavoriteStatuses(
+  fullNames: string[],
+): Promise<Record<string, FavoriteStatus> | null> {
+  if (fullNames.length === 0) {
+    return {};
+  }
+  return getAuthedJson(
+    `/favorites/statuses?fullNames=${encodeURIComponent(fullNames.slice(0, 50).join(','))}`,
+  );
 }
 
 export async function fetchProfile(): Promise<Profile | null> {

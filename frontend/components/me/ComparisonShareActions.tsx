@@ -2,6 +2,21 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Copy, Link2, Lock, RotateCcw, Trash2 } from 'lucide-react';
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { shareComparison } from '@/lib/compare';
 import { deleteComparison, revokeComparisonShare } from '@/lib/me';
 
@@ -17,6 +32,7 @@ export default function ComparisonShareActions({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const share = async () => {
     setBusy(true);
@@ -34,9 +50,6 @@ export default function ComparisonShareActions({
   };
 
   const revoke = async () => {
-    if (!window.confirm('撤销后旧链接会立即失效，确定继续吗？')) {
-      return;
-    }
     setBusy(true);
     setError('');
     setMessage('');
@@ -65,9 +78,6 @@ export default function ComparisonShareActions({
   };
 
   const remove = async () => {
-    if (!window.confirm('删除后这条对比记录无法恢复，确定删除吗？')) {
-      return;
-    }
     setBusy(true);
     setError('');
     try {
@@ -81,55 +91,87 @@ export default function ComparisonShareActions({
   };
 
   return (
-    <section className="rounded-card border border-line bg-background p-4 shadow-card">
-      <div className="flex flex-wrap items-center gap-2">
-        {token ? (
-          <>
-            <input
-              readOnly
-              value={`/compare/s/${token}`}
-              className="min-w-[220px] flex-1 rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink-secondary"
-            />
-            <button
-              type="button"
-              onClick={copy}
-              className="rounded-md border border-line px-3 py-1 text-xs text-ink-secondary hover:border-accent hover:text-accent"
-            >
-              复制链接
-            </button>
-            <button
-              type="button"
-              onClick={revoke}
-              disabled={busy}
-              className="rounded-md border border-line px-3 py-1 text-xs text-danger hover:border-danger disabled:opacity-60"
-            >
-              撤销分享
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={share}
-            disabled={busy}
-            className="rounded-md bg-accent px-3 py-1 text-xs text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
-          >
-            {busy ? '生成中…' : '生成只读分享链接'}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={remove}
-          disabled={busy}
-          className="ml-auto rounded-md border border-line px-3 py-1 text-xs text-danger hover:border-danger disabled:opacity-60"
-        >
-          删除这条对比
-        </button>
+    <section className="border border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+        <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
+          Share &amp; manage / 分享与记录
+        </h2>
+        <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+          <Lock className="size-3" aria-hidden />
+          只读 · 不含账号与需求原文
+        </span>
       </div>
-      {message ? <p className="mt-2 text-xs text-accent">{message}</p> : null}
-      {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
-      <p className="mt-2 text-[11px] text-ink-muted">
-        分享页只展示对比结论，不包含你的账号信息与需求原文。
-      </p>
+
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {token ? (
+            <>
+              <Input
+                readOnly
+                value={`/compare/s/${token}`}
+                className="h-8 min-w-[220px] flex-1 rounded-none font-mono text-[11px]"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => void copy()} className="rounded-none">
+                <Copy className="size-3.5" data-icon="inline-start" />
+                复制链接
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void revoke()}
+                disabled={busy}
+                className="rounded-none text-destructive hover:text-destructive"
+              >
+                <RotateCcw className="size-3.5" data-icon="inline-start" />
+                撤销分享
+              </Button>
+            </>
+          ) : (
+            <Button type="button" size="sm" onClick={() => void share()} disabled={busy} className="rounded-none">
+              <Link2 className="size-3.5" data-icon="inline-start" />
+              {busy ? '生成中…' : '生成只读分享链接'}
+            </Button>
+          )}
+
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={busy}
+                className="ml-auto rounded-none"
+              >
+                <Trash2 className="size-3.5" data-icon="inline-start" />
+                删除这条对比
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="rounded-none">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="font-display">删除这条对比记录？</AlertDialogTitle>
+                <AlertDialogDescription className="text-[12px] leading-relaxed">
+                  删除后记录与分享链接都无法恢复。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-none">取消</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => void remove()}
+                  className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  确认删除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+
+        {message ? (
+          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-primary">{message}</p>
+        ) : null}
+        {error ? <p className="text-[11px] text-destructive">{error}</p> : null}
+      </div>
     </section>
   );
 }

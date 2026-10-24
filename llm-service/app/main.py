@@ -1,16 +1,29 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api import chat, compare, health, match
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
+from app.services.embedding import EmbeddingService
 
 logger = structlog.get_logger("app")
+
+
+async def _warm_embedding(settings: Settings) -> None:
+    """启动后预热 embedding，避免首次匹配把模型加载时间算进超时预算。"""
+    try:
+        await EmbeddingService(settings).embed_query("warmup")
+        logger.info("embedding_warmed", model=settings.llm_embedding_model)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning("embedding_warm_failed", error=type(exc).__name__)
 
 
 def create_app() -> FastAPI:
@@ -25,7 +38,11 @@ def create_app() -> FastAPI:
             version=settings.app_version,
             environment=settings.environment,
         )
+        warm_task = asyncio.create_task(_warm_embedding(settings))
         yield
+        warm_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await warm_task
         logger.info("service_stopped", service=settings.app_name)
 
     app = FastAPI(

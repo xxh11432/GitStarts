@@ -25,6 +25,10 @@ public class Repository {
     private String topics;
     private String category;
     private String platform;
+    private String platforms;
+    private String latestReleaseTag;
+    private LocalDateTime latestReleaseAt;
+    private LocalDateTime releaseCheckedAt;
     private String defaultBranch;
     private LocalDateTime pushedAt;
     private LocalDateTime createdAt;
@@ -152,6 +156,38 @@ public class Repository {
 
     public void setPlatform(String platform) {
         this.platform = platform;
+    }
+
+    public String getPlatforms() {
+        return platforms;
+    }
+
+    public void setPlatforms(String platforms) {
+        this.platforms = platforms;
+    }
+
+    public String getLatestReleaseTag() {
+        return latestReleaseTag;
+    }
+
+    public void setLatestReleaseTag(String latestReleaseTag) {
+        this.latestReleaseTag = latestReleaseTag;
+    }
+
+    public LocalDateTime getLatestReleaseAt() {
+        return latestReleaseAt;
+    }
+
+    public void setLatestReleaseAt(LocalDateTime latestReleaseAt) {
+        this.latestReleaseAt = latestReleaseAt;
+    }
+
+    public LocalDateTime getReleaseCheckedAt() {
+        return releaseCheckedAt;
+    }
+
+    public void setReleaseCheckedAt(LocalDateTime releaseCheckedAt) {
+        this.releaseCheckedAt = releaseCheckedAt;
     }
 
     public String getDefaultBranch() {

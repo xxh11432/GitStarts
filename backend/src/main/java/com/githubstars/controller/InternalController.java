@@ -10,6 +10,7 @@ import com.githubstars.dto.IndexRepoPage;
 import com.githubstars.dto.MessageCreateRequest;
 import com.githubstars.dto.QuotaReserveRequest;
 import com.githubstars.dto.QuotaReserveResponse;
+import com.githubstars.dto.QuotaResponse;
 import com.githubstars.dto.RepoBatchRequest;
 import com.githubstars.dto.RepoDocumentUpsertRequest;
 import com.githubstars.dto.RepoResponse;
@@ -91,6 +92,14 @@ public class InternalController {
 
         return ResponseEntity.ok(new QuotaReserveResponse(true, reservation.used(), reservation.limit(),
                 reservation.remaining(), resetAt));
+    }
+
+    /**
+     * 配额只读探测：llm-service 在 LLM 解析与落库前先拦截已耗尽用户。
+     */
+    @GetMapping("/quota")
+    public QuotaResponse quota(@RequestParam Long userId) {
+        return quotaService.current(userId);
     }
 
     /**

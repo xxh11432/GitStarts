@@ -72,18 +72,23 @@ public class ComparisonService {
 
     public ComparisonResponse get(Long id, Long userId) {
         Comparison comparison = comparisonMapper.selectById(id);
-        if (comparison == null || (userId != null && !userId.equals(comparison.getUserId()))) {
+        if (comparison == null || userId == null || !userId.equals(comparison.getUserId())) {
             throw new ComparisonNotFoundException("对比不存在或无权访问");
         }
         return toResponse(comparison);
     }
 
     public PageResult<ComparisonSummary> list(Long userId, int page, int size) {
+        return list(userId, page, size, null);
+    }
+
+    public PageResult<ComparisonSummary> list(Long userId, int page, int size, Long ideaId) {
         int current = Math.max(page, 1);
         int pageSize = Math.min(Math.max(size, 1), 50);
         Page<Comparison> result = comparisonMapper.selectPage(new Page<>(current, pageSize),
                 new LambdaQueryWrapper<Comparison>()
                         .eq(Comparison::getUserId, userId)
+                        .eq(ideaId != null, Comparison::getIdeaId, ideaId)
                         .orderByDesc(Comparison::getId));
         List<ComparisonSummary> items = result.getRecords().stream()
                 .map(comparison -> new ComparisonSummary(comparison.getId(), splitRepoKeys(comparison),

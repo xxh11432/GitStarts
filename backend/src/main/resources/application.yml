@@ -77,3 +77,6 @@ app:
 logging:
   level:
     com.githubstars: info
+  pattern:
+    # 在日志级别后输出请求 ID，与 Nginx / llm-service 的 X-Request-Id 对齐
+    level: "%5p [%X{requestId:-}]"
