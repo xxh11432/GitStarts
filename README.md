@@ -80,12 +80,13 @@ fit = 0.45 × 语义相关
 - 前端：首页、仓库列表、仓库详情（Next.js App Router + Tailwind）
 - 部署：Docker Compose 编排 MySQL / Redis / 后端 / 前端 / Nginx
 - 缓存：热点数据 Redis 缓存
+- **M0 工程基座**：`llm-service`（FastAPI + structlog + requestId）、`ingest-worker`、Qdrant、Nginx `/ai/` 与 `/api/internal/` 隔离、新视觉设计令牌与首页骨架
 
 **规划中（AI 升级）**
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M0 | 工程基座与视觉系统：`llm-service` 骨架、Qdrant、Nginx `/ai/` 与内部接口隔离 | 待启动 |
+| M0 | 工程基座与视觉系统：`llm-service` 骨架、Qdrant、Nginx `/ai/` 与内部接口隔离 | 已完成 |
 | M1 | GitHub OAuth、会话（Spring Session）、每日配额原子扣减 | 待启动 |
 | M2 | 仓库数据补强：`platform` 字段、许可与更新时间筛选、相关推荐 | 待启动 |
 | M3 | AI 网关与对话 MVP：SSE 流式、工具调用（`search_repos` / `get_repo` / `get_rank`） | 待启动 |
@@ -147,26 +148,32 @@ flowchart TB
 | 层 | 选型 |
 |---|---|
 | 后端 | Java 17 · Spring Boot 3.5 · MyBatis-Plus |
-| AI 网关 | Spring Boot WebFlux · WebClient · SSE |
+| AI 网关 | Python 3.12 · FastAPI · LangGraph · langchain-openai |
 | 认证 | Spring Security · OAuth2 Client · Spring Session Redis |
 | 存储 | MySQL 8 · Redis 7 · Qdrant 1.x |
 | 前端 | Next.js 14（App Router）· TypeScript · Tailwind CSS |
-| 模型 | OpenAI 兼容协议（默认 SiliconFlow：DeepSeek + bge-m3），全部走环境变量 |
+| 模型 | OpenAI 兼容协议（默认 SiliconFlow：DeepSeek）；embedding 本地 fastembed（1024 维多语言模型），可切供应商 API |
 | 部署 | Nginx · Docker Compose |
 
 ## 快速开始
 
-环境要求：Docker + Docker Compose；本地开发另需 JDK 17、Maven 3.9+、Node.js 20+。
+环境要求：Docker + Docker Compose；本地开发另需 JDK 17、Maven 3.9+、Node.js 20+、Python 3.12 + uv。
 
 ```bash
 git clone https://github.com/xxh11432/GitStarts.git
 cd GitStarts
 cp .env.example .env
-# 编辑 .env：MySQL / Redis 密码，GITHUB_TOKEN（提升 API 限流）
+# 编辑 .env：MySQL / Redis 密码，GITHUB_TOKEN（提升 API 限流），LLM_API_KEY（M3 起）
 docker compose up -d --build
 ```
 
-启动后访问 `http://localhost`（Nginx → 前端，`/api/` 反代到后端）。
+首次 `--build` 会预热 embedding 模型（约 2 GB），构建较慢；可设 `PREWARM_MODELS=false` 跳过，模型改在首次请求时下载。
+
+启动后访问 `http://localhost`（Nginx → 前端，`/api/` 反代到后端，`/ai/` 反代到 llm-service）。`/api/internal/**` 对外直接 404。
+
+```bash
+curl http://localhost/ai/health   # {"status":"ok|degraded", ...}
+```
 
 本地开发：
 
@@ -179,6 +186,15 @@ mvn spring-boot:run
 cd frontend
 npm install
 npm run dev
+
+# AI 网关（8081）
+cd llm-service
+uv sync
+uv run uvicorn app.main:app --reload --port 8081
+
+# 索引 worker（占位，M4 起执行抓取/索引任务）
+cd llm-service
+uv run python -m worker
 ```
 
 关键环境变量：
@@ -188,8 +204,10 @@ npm run dev
 | `GITHUB_TOKEN` | GitHub PAT，用于提升 Search / REST 限流 |
 | `SYNC_ENABLED` | 是否启用定时采集，本地开发可设 `false` |
 | `API_INTERNAL_URL` | 前端 SSR 访问后端的内部地址 |
-| `LLM_BASE_URL` / `LLM_API_KEY` | 模型网关地址与密钥（M3 起） |
-| `LLM_CHAT_MODEL` / `LLM_EMBEDDING_MODEL` | 对话与向量模型（默认 DeepSeek + bge-m3） |
+| `LLM_BASE_URL` / `LLM_API_KEY` | 模型网关地址与密钥（仅 llm-service 可见） |
+| `LLM_CHAT_MODEL` / `LLM_EMBEDDING_MODEL` | 对话与向量模型（默认 DeepSeek + 1024 维多语言 embedding） |
+| `EMBEDDING_PROVIDER` | `fastembed`（本地，默认）或 `api` |
+| `PREWARM_MODELS` | 镜像构建期是否预热 embedding 模型 |
 | `INTERNAL_TOKEN` | 服务间调用鉴权（M0 起） |
 | `QDRANT_URL` | 向量库地址（M0 起） |
 
@@ -206,15 +224,19 @@ GitStarts/
 │       └── config/           # Redis、线程池、调度
 ├── frontend/                 # Next.js 14
 │   ├── app/                  # 首页 / 仓库列表 / 仓库详情
-│   ├── components/           # Navbar / RepoCard / FilterBar
+│   ├── components/           # Navbar / HeroComposer / RepoCard / FilterBar
 │   └── lib/                  # API 封装与类型
+├── llm-service/              # Python AI 网关（API 与 worker 同镜像）
+│   ├── app/                  # FastAPI：api / core / clients / schemas
+│   ├── worker/               # python -m worker，APScheduler 任务入口
+│   ├── tests/                # pytest（SSE 与工具契约测试）
+│   ├── pyproject.toml        # uv 依赖与 ruff / pytest 配置
+│   └── Dockerfile            # 多阶段构建，含 embedding 预热
 ├── deploy/init.sql           # MySQL 建表与初始化
-├── nginx/nginx.conf          # 反向代理
+├── nginx/nginx.conf          # 反向代理（/api/、/ai/、内部接口隔离）
 ├── doc/                      # 技术方案
 └── docker-compose.yml
 ```
-
-AI 升级将新增 `llm-service/`、`ingest-worker/` 两个工程与 Qdrant 服务。
 
 ## API 概览
 
@@ -227,13 +249,14 @@ AI 升级将新增 `llm-service/`、`ingest-worker/` 两个工程与 Qdrant 服�
 | GET | `/api/repos/{fullName}` | 仓库详情 |
 | GET | `/api/meta` | 分类、语言、标签聚合 |
 | GET | `/api/health` | 健康检查 |
+| GET | `/ai/health` | AI 网关健康检查（含 Qdrant 连通性，始终 200） |
 
 规划接口：`POST /ai/match`、`POST /ai/chat/stream`、`POST /ai/compare`，均以 SSE 推送事件（`parsed` / `status` / `candidate` / `cell` / `verdict` / `done` / `error`），业务侧 `/api/auth/*`、`/api/ideas`、`/api/favorites`、`/api/quota`。服务间接口统一收在 `/api/internal/`，Nginx 对外直接返回 404。
 
 ## 数据与索引
 
 - **MySQL**：`repositories`（仓库主表）+ `tags` / `repo_tags`（分类与标签）+ `sync_logs`（采集日志）；AI 阶段新增 `users` / `ideas` / `conversations` / `messages` / `comparisons` / `favorites` / `usage_daily`。
-- **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `language` / `category` / `license` / `stars` / `pushed_at` 供过滤。
+- **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `language` / `category` / `license` / `stars` / `pushed_at` 供过滤。本地 embedding 使用 fastembed（fastembed 未提供 bge-m3 ONNX 版本，默认 `intfloat/multilingual-e5-large`；需要 bge-m3 时切 `EMBEDDING_PROVIDER=api`）。
 - **缓存**：匹配结果 10 分钟、对比结果 7 天、榜单与元数据 5 分钟、embedding 按 chunk hash 永久。
 
 ## 安全与合规
@@ -246,8 +269,9 @@ AI 升级将新增 `llm-service/`、`ingest-worker/` 两个工程与 Qdrant 服�
 
 ## 文档
 
-- [技术方案（基线）](doc/技术方案.md)：技术栈、表结构、采集引擎与六阶段计划
+- [完整方案（v1.1，Python + LangGraph）](doc/AI匹配与对比平台完整方案.md)
+- [技术方案（基线）](doc/技术方案.md)：技术栈、表结构、采集引擎与阶段计划
 
 ## 贡献
 
-欢迎提 Issue 讨论需求与选型场景。提交 Pull Request 前请确保：`mvn -q package` 与 `npm run build` 通过，新增接口附带最小可复现示例。
+欢迎提 Issue 讨论需求与选型场景。提交 Pull Request 前请确保：`mvn -q package`、`npm run build`、`uv run ruff check`、`uv run pytest` 通过，新增接口附带最小可复现示例。

@@ -5,6 +5,13 @@
 node_modules/
 .next/
 
+# Python (llm-service)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
 # Java
 target/
 !.mvn/wrapper/maven-wrapper.jar

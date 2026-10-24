@@ -1,0 +1,43 @@
+[project]
+name = "llm-service"
+version = "0.1.0"
+description = "GitStars AI gateway: FastAPI + LangGraph"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # web
+    "fastapi==0.162.0",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.16.1",
+    "structlog==26.1.0",
+    "httpx==0.28.1",
+    # infra
+    "redis==8.1.0",
+    "qdrant-client==1.20.0",
+    "fastembed==0.9.0",
+    "apscheduler==3.11.3",
+    # AI orchestration (versions pinned, upgrade only after eval regression)
+    "langgraph==1.2.17",
+    "langchain-openai==1.7.2",
+    "openai==3.37.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "respx==0.23.1",
+    "ruff==0.17.2",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

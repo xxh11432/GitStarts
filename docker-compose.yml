@@ -34,6 +34,16 @@ services:
       timeout: 5s
       retries: 10
 
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: gs-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+    expose:
+      - "6333"
+      - "6334"
+
   backend:
     build: ./backend
     container_name: gs-backend
@@ -55,6 +65,82 @@ services:
       TZ: Asia/Shanghai
     expose:
       - "8080"
+
+  llm-service:
+    build:
+      context: ./llm-service
+      args:
+        PREWARM_MODELS: ${PREWARM_MODELS:-true}
+    container_name: gs-llm-service
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+      - backend
+      - redis
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-deepseek-ai/DeepSeek-V3}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
+      LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+      LLM_EMBEDDING_DIM: ${LLM_EMBEDDING_DIM:-1024}
+      FASTEMBED_CACHE: /models
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      QDRANT_URL: http://qdrant:6333
+      CHECKPOINT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      COMPARE_CONCURRENCY: ${COMPARE_CONCURRENCY:-4}
+      QUOTA_CHAT_DAILY: ${QUOTA_CHAT_DAILY:-30}
+      QUOTA_COMPARE_DAILY: ${QUOTA_COMPARE_DAILY:-3}
+      WORKER_ENABLED: "false"
+      TZ: Asia/Shanghai
+    volumes:
+      - model-cache:/models
+    expose:
+      - "8081"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8081/ai/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  ingest-worker:
+    build:
+      context: ./llm-service
+      args:
+        PREWARM_MODELS: ${PREWARM_MODELS:-true}
+    container_name: gs-ingest-worker
+    restart: unless-stopped
+    command: ["python", "-m", "worker"]
+    depends_on:
+      - qdrant
+      - redis
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-deepseek-ai/DeepSeek-V3}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
+      LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+      LLM_EMBEDDING_DIM: ${LLM_EMBEDDING_DIM:-1024}
+      FASTEMBED_CACHE: /models
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      QDRANT_URL: http://qdrant:6333
+      CHECKPOINT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      WORKER_ENABLED: ${WORKER_ENABLED:-true}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      TZ: Asia/Shanghai
+    volumes:
+      - model-cache:/models
 
   frontend:
     build:
@@ -81,7 +167,10 @@ services:
     depends_on:
       - frontend
       - backend
+      - llm-service
 
 volumes:
   mysql-data:
   redis-data:
+  qdrant-data:
+  model-cache:
