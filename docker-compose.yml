@@ -35,7 +35,7 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    image: qdrant/qdrant:v1.20.0
     container_name: gs-qdrant
     restart: unless-stopped
     volumes:
