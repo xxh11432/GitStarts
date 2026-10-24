@@ -86,6 +86,32 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated_at  DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 会话（M3）：AI 对话落库
+CREATE TABLE IF NOT EXISTS conversations (
+    id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id    BIGINT NOT NULL,
+    idea_id    BIGINT NULL,
+    title      VARCHAR(200),
+    mode       VARCHAR(16) NOT NULL COMMENT 'chat|match|compare',
+    created_at DATETIME,
+    updated_at DATETIME,
+    INDEX idx_user (user_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 会话消息（M3）：role=user|assistant|tool
+CREATE TABLE IF NOT EXISTS messages (
+    id              BIGINT PRIMARY KEY AUTO_INCREMENT,
+    conversation_id BIGINT NOT NULL,
+    role            VARCHAR(16) NOT NULL,
+    content         MEDIUMTEXT,
+    tool_trace      JSON,
+    refs            JSON,
+    tokens_in       INT,
+    tokens_out      INT,
+    created_at      DATETIME,
+    INDEX idx_conv (conversation_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 每日用量（配额以 Redis 原子扣减为准，这张表用于成本统计）
 CREATE TABLE IF NOT EXISTS usage_daily (
     user_id       BIGINT NOT NULL,

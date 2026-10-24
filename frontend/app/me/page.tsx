@@ -9,7 +9,7 @@ const assets = [
   { title: '我的想法', description: 'M4 上线后，这里会列出你结构化过的需求', href: '/#composer' },
   { title: '对比记录', description: 'M5 上线后，这里会保存每次对比结论', href: '/compare' },
   { title: '收藏仓库', description: 'M6 上线后，收藏与备注会沉淀在这里', href: '/repos' },
-  { title: '会话历史', description: 'M3 上线后，可回看与 AI 的对话', href: '/' },
+  { title: '会话历史', description: 'M6 上线后，可回看与 AI 的对话', href: '/#composer' },
 ];
 
 export default async function MePage() {

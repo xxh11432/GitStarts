@@ -155,6 +155,43 @@ public class RepoService {
         return new PageResult<>(items, result.getTotal(), page, size);
     }
 
+    /**
+     * AI 工具调用专用检索：关键字 + 硬条件，返回精简列表（无分页）。
+     */
+    public List<RepoResponse> searchForAi(String q, String language, String category, String license,
+                                          Integer minStars, String sort, int limit) {
+        int effectiveLimit = Math.min(Math.max(limit, 1), 10);
+        LambdaQueryWrapper<Repository> wrapper = new LambdaQueryWrapper<>();
+
+        if (q != null && !q.isBlank()) {
+            String like = q.trim();
+            wrapper.and(w -> w.like(Repository::getFullName, like)
+                    .or().like(Repository::getName, like)
+                    .or().like(Repository::getDescription, like));
+        }
+        if (language != null && !language.isBlank()) {
+            wrapper.eq(Repository::getLanguage, resolveLanguage(language));
+        }
+        if (category != null && !category.isBlank()) {
+            wrapper.eq(Repository::getCategory, category.trim());
+        }
+        if (license != null && !license.isBlank()) {
+            wrapper.eq(Repository::getLicense, license.trim());
+        }
+        if (minStars != null && minStars > 0) {
+            wrapper.ge(Repository::getStars, minStars);
+        }
+
+        wrapper.orderByDesc("pushedAt".equalsIgnoreCase(sort)
+                ? Repository::getPushedAt
+                : Repository::getStars);
+        wrapper.last("LIMIT " + effectiveLimit);
+
+        return repositoryMapper.selectList(wrapper).stream()
+                .map(assembler::toResponse)
+                .collect(Collectors.toList());
+    }
+
     private Repository findRepo(String normalized) {
         Repository repo = repositoryMapper.selectOne(
                 new LambdaQueryWrapper<Repository>().eq(Repository::getFullName, normalized));

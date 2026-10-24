@@ -97,6 +97,7 @@ services:
       LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
       LLM_EMBEDDING_DIM: ${LLM_EMBEDDING_DIM:-1024}
       FASTEMBED_CACHE: /models
+      BACKEND_URL: http://backend:8080
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
       QDRANT_URL: http://qdrant:6333
       CHECKPOINT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1

@@ -83,6 +83,7 @@ fit = 0.45 × 语义相关
 - **M0 工程基座**：`llm-service`（FastAPI + structlog + requestId）、`ingest-worker`、Qdrant、Nginx `/ai/` 与 `/api/internal/` 隔离、新视觉设计令牌与首页骨架
 - **M1 账号会话与配额**：GitHub OAuth 登录闭环、Spring Session Redis（7 天）、每日配额 Redis 原子扣减、`/ai/**` 未登录 401（Nginx auth_request）、登录页与 `/me`、`/compare` 路由保护
 - **M2 仓库数据补强**：`platform` 规则推导与筛选、许可证与更新时间筛选、详情页 README 摘要与相关推荐、首页平台/统计模块、列表与详情新视觉及移动端筛选抽屉
+- **M3 AI 对话 MVP**：`/ai/chat/stream` SSE 流式（`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error`）、工具调用（`search_repos` / `get_repo` / `get_rank`）、首页对话与仓库卡、会话与消息异步落库
 
 **规划中（AI 升级）**
 
@@ -91,7 +92,7 @@ fit = 0.45 × 语义相关
 | M0 | 工程基座与视觉系统：`llm-service` 骨架、Qdrant、Nginx `/ai/` 与内部接口隔离 | 已完成 |
 | M1 | GitHub OAuth、会话（Spring Session）、每日配额原子扣减 | 已完成 |
 | M2 | 仓库数据补强：`platform` 字段、许可与更新时间筛选、相关推荐 | 已完成 |
-| M3 | AI 网关与对话 MVP：SSE 流式、工具调用（`search_repos` / `get_repo` / `get_rank`） | 待启动 |
+| M3 | AI 网关与对话 MVP：SSE 流式、工具调用（`search_repos` / `get_repo` / `get_rank`） | 已完成 |
 | M4 | 语义索引与匹配：README 分块 embedding、召回重排、`/ai/match` | 待启动 |
 | M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 待启动 |
 | M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 待启动 |
@@ -178,6 +179,9 @@ docker compose up -d --build
 > 从 M1 升级到 M2 时，已有数据库需补 `repositories.platform` 列与索引（新库由 `deploy/init.sql` 直接创建，无需执行）：
 > `docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "ALTER TABLE repositories ADD COLUMN platform VARCHAR(32) NULL AFTER category, ADD INDEX idx_platform(platform), ADD INDEX idx_pushed_at(pushed_at)"'`。
 > 平台字段在应用启动时会为存量仓库自动回填。
+>
+> 从 M2 升级到 M3 时，已有数据库需补会话与消息表（新库由 `deploy/init.sql` 直接创建，无需执行）：
+> `docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /docker-entrypoint-initdb.d/init.sql'` 可重跑建表脚本（全部为 `CREATE TABLE IF NOT EXISTS`）。
 
 启动后访问 `http://localhost`（Nginx → 前端，`/api/` 反代到后端，`/ai/` 反代到 llm-service）。`/api/internal/**` 对外直接 404。
 
@@ -223,6 +227,7 @@ uv run python -m worker
 | `EMBEDDING_PROVIDER` | `fastembed`（本地，默认）或 `api` |
 | `PREWARM_MODELS` | 镜像构建期是否预热 embedding 模型 |
 | `INTERNAL_TOKEN` | 服务间调用鉴权（M0 起） |
+| `BACKEND_URL` | llm-service 访问 backend 内部接口的地址（Compose 内为 `http://backend:8080`） |
 | `QDRANT_URL` | 向量库地址（M0 起） |
 
 ## 目录结构
@@ -239,10 +244,10 @@ GitStarts/
 │       └── config/           # Redis、线程池、调度
 ├── frontend/                 # Next.js 14
 │   ├── app/                  # 首页 / 仓库 / 登录 / 个人中心 / 对比
-│   ├── components/           # Navbar / HeroComposer / RepoCard / FilterBar / LoginButton / QuotaBadge
-│   └── lib/                  # API 封装、客户端会话与 CSRF 工具、类型
+│   ├── components/           # Navbar / HeroComposer / StreamingMarkdown / RepoMiniCard / RepoCard / FilterBar
+│   └── lib/                  # API 封装、SSE 客户端、客户端会话与 CSRF 工具、类型
 ├── llm-service/              # Python AI 网关（API 与 worker 同镜像）
-│   ├── app/                  # FastAPI：api / core / clients / schemas
+│   ├── app/                  # FastAPI：api / core / clients / graphs / tools / services / schemas
 │   ├── worker/               # python -m worker，APScheduler 任务入口
 │   ├── tests/                # pytest（SSE 与工具契约测试）
 │   ├── pyproject.toml        # uv 依赖与 ruff / pytest 配置
@@ -271,10 +276,11 @@ GitStarts/
 | GET | `/api/quota` | 今日对话 / 对比配额（未登录 401） |
 | GET | `/api/health` | 健康检查 |
 | GET | `/ai/health` | AI 网关健康检查（含 Qdrant 连通性，始终 200） |
+| POST | `/ai/chat/stream` | AI 对话 SSE（需登录，`X-User-Id` 由 Nginx 透传）：`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error` |
 
-服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`（原子扣减，超限 429）、`GET /api/internal/auth/session`（供 Nginx `auth_request` 校验会话并回传 `X-User-Id`）。`/ai/**` 除 `/ai/health` 外均要求登录，未登录由 Nginx 返回 401 JSON。
+服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`（原子扣减，超限 429）、`GET /api/internal/repos/search`、`GET /api/internal/repos/rank`、`GET /api/internal/repos/{fullName}`、`POST /api/internal/conversations`、`POST /api/internal/messages`、`GET /api/internal/auth/session`（供 Nginx `auth_request` 校验会话并回传 `X-User-Id`）。`/ai/**` 除 `/ai/health` 外均要求登录，未登录由 Nginx 返回 401 JSON。
 
-规划接口：`POST /ai/match`、`POST /ai/chat/stream`、`POST /ai/compare`，均以 SSE 推送事件（`parsed` / `status` / `candidate` / `cell` / `verdict` / `done` / `error`），业务侧 `/api/auth/*`、`/api/ideas`、`/api/favorites`、`/api/quota`。服务间接口统一收在 `/api/internal/`，Nginx 对外直接返回 404。
+规划接口：`POST /ai/match`、`POST /ai/compare`，均以 SSE 推送事件（`parsed` / `status` / `candidate` / `cell` / `verdict` / `done` / `error`），业务侧 `/api/ideas`、`/api/favorites` 等。服务间接口统一收在 `/api/internal/`，Nginx 对外直接返回 404。
 
 ## 数据与索引
 

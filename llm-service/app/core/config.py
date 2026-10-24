@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     fastembed_cache: str = "/models"
 
     # Infrastructure
+    backend_url: str = "http://localhost:8080"
+    backend_timeout_seconds: float = 5.0
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
     checkpoint_redis_url: str = "redis://localhost:6379/1"
@@ -44,6 +46,14 @@ class Settings(BaseSettings):
     quota_compare_daily: int = 3
     compare_concurrency: int = 4
     request_timeout_seconds: float = 60.0
+
+    # Chat graph (M3)
+    llm_timeout_seconds: float = 45.0
+    llm_max_retries: int = 1
+    llm_max_tokens: int = 1200
+    chat_history_limit: int = 10
+    chat_tool_round_limit: int = 3
+    chat_persist_retries: int = 2
 
     # Worker
     worker_enabled: bool = True

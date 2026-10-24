@@ -31,7 +31,7 @@ export default async function HomePage() {
           有个想法，先看看有没有能直接用的开源项目
         </h1>
         <p className="mx-auto mt-2 max-w-2xl text-body text-ink-secondary">
-          描述你的场景与硬条件，匹配候选项目，再让 AI 读 README 做横向对比，每个结论都附证据。
+          描述你的场景与硬条件，AI 会检索仓库库并给出可核对的候选；许可证与部署方式以项目仓库为准。
         </p>
 
         <HeroComposer />
