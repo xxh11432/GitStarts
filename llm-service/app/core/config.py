@@ -59,6 +59,41 @@ class Settings(BaseSettings):
     worker_enabled: bool = True
     worker_heartbeat_minutes: int = 5
     github_token: str = ""
+    github_api_base: str = "https://api.github.com"
+    github_timeout_seconds: float = 20.0
+    github_max_retries: int = 3
+    github_backoff_seconds: float = 1.0
+
+    # Semantic index (M4)
+    qdrant_collection: str = "repo_chunks"
+    embedding_batch_size: int = 32
+    index_page_size: int = 100
+    index_chunk_target_tokens: int = 600
+    index_chunk_min_tokens: int = 400
+    index_chunk_max_tokens: int = 800
+    index_chunk_overlap_tokens: int = 80
+    index_interval_minutes: int = 60
+    index_on_startup: bool = True
+    index_max_repos: int = 0  # 0 = 不限；用于本地小样本验证
+    index_full_rebuild: bool = False
+    index_manifests_enabled: bool = True
+
+    # Match (M4)
+    match_limit_default: int = 6
+    match_recall_limit: int = 40
+    match_keyword_limit: int = 10
+    match_rerank_limit: int = 16
+    match_cache_ttl_seconds: int = 600
+
+    # Compare (M5)
+    compare_schema_version: str = "v1"
+    compare_evidence_topk: int = 6
+    compare_cache_ttl_seconds: int = 7 * 24 * 3600
+    compare_checkpoint_ttl_seconds: int = 3600
+    compare_analysis_cache_ttl_seconds: int = 7 * 24 * 3600
+    compare_timeout_seconds: float = 240.0
+    compare_cell_value_max_chars: int = 400
+    compare_llm_max_tokens: int = 1600
 
     # Health probes must stay fast and never fail the request.
     health_timeout_seconds: float = Field(default=1.0, ge=0.1, le=5.0)

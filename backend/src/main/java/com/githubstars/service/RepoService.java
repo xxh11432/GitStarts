@@ -159,9 +159,10 @@ public class RepoService {
      * AI 工具调用专用检索：关键字 + 硬条件，返回精简列表（无分页）。
      */
     public List<RepoResponse> searchForAi(String q, String language, String category, String license,
-                                          Integer minStars, String sort, int limit) {
-        int effectiveLimit = Math.min(Math.max(limit, 1), 10);
+                                          String platform, Integer minStars, String sort, int limit) {
+        int effectiveLimit = Math.min(Math.max(limit, 1), 20);
         LambdaQueryWrapper<Repository> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Repository::getArchived, 0).eq(Repository::getDisabled, 0);
 
         if (q != null && !q.isBlank()) {
             String like = q.trim();
@@ -177,6 +178,9 @@ public class RepoService {
         }
         if (license != null && !license.isBlank()) {
             wrapper.eq(Repository::getLicense, license.trim());
+        }
+        if (platform != null && !platform.isBlank()) {
+            wrapper.eq(Repository::getPlatform, platform.trim().toLowerCase());
         }
         if (minStars != null && minStars > 0) {
             wrapper.ge(Repository::getStars, minStars);

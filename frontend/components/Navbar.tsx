@@ -27,6 +27,12 @@ export default async function Navbar() {
             仓库列表
           </Link>
           <Link
+            href="/match"
+            className="rounded-md px-2 py-1 text-sm text-ink-secondary transition-colors hover:text-ink"
+          >
+            匹配
+          </Link>
+          <Link
             href="/compare"
             className="rounded-md px-2 py-1 text-sm text-ink-secondary transition-colors hover:text-ink"
           >

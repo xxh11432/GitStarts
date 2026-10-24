@@ -1,12 +1,23 @@
 package com.githubstars.controller;
 
+import com.githubstars.dto.ComparisonSaveRequest;
 import com.githubstars.dto.ConversationCreateRequest;
+import com.githubstars.dto.IdeaCreateRequest;
+import com.githubstars.dto.IdeaResponse;
+import com.githubstars.dto.IdeaUpdateRequest;
+import com.githubstars.dto.IndexMarkRequest;
+import com.githubstars.dto.IndexRepoPage;
 import com.githubstars.dto.MessageCreateRequest;
 import com.githubstars.dto.QuotaReserveRequest;
 import com.githubstars.dto.QuotaReserveResponse;
+import com.githubstars.dto.RepoBatchRequest;
+import com.githubstars.dto.RepoDocumentUpsertRequest;
 import com.githubstars.dto.RepoResponse;
 import com.githubstars.security.OAuth2UserPrincipal;
+import com.githubstars.service.ComparisonService;
 import com.githubstars.service.ConversationService;
+import com.githubstars.service.DocumentService;
+import com.githubstars.service.IdeaService;
 import com.githubstars.service.QuotaKind;
 import com.githubstars.service.QuotaService;
 import com.githubstars.service.RankService;
@@ -18,6 +29,7 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,13 +52,21 @@ public class InternalController {
     private final RepoService repoService;
     private final RankService rankService;
     private final ConversationService conversationService;
+    private final DocumentService documentService;
+    private final IdeaService ideaService;
+    private final ComparisonService comparisonService;
 
     public InternalController(QuotaService quotaService, RepoService repoService,
-                              RankService rankService, ConversationService conversationService) {
+                              RankService rankService, ConversationService conversationService,
+                              DocumentService documentService, IdeaService ideaService,
+                              ComparisonService comparisonService) {
         this.quotaService = quotaService;
         this.repoService = repoService;
         this.rankService = rankService;
         this.conversationService = conversationService;
+        this.documentService = documentService;
+        this.ideaService = ideaService;
+        this.comparisonService = comparisonService;
     }
 
     @PostMapping("/quota/reserve")
@@ -82,10 +102,70 @@ public class InternalController {
             @RequestParam(required = false) String language,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String license,
+            @RequestParam(required = false) String platform,
             @RequestParam(required = false) Integer minStars,
             @RequestParam(defaultValue = "stars") String sort,
             @RequestParam(defaultValue = "10") int limit) {
-        return repoService.searchForAi(q, language, category, license, minStars, sort, limit);
+        return repoService.searchForAi(q, language, category, license, platform, minStars, sort, limit);
+    }
+
+    /**
+     * 语义匹配：按 fullName 批量取仓库元信息（Qdrant 召回结果补全）。
+     */
+    @PostMapping("/repos/batch")
+    public List<RepoResponse> batchRepos(@RequestBody RepoBatchRequest request) {
+        return documentService.batch(request.fullNames());
+    }
+
+    /**
+     * 索引 worker：按 id 游标分页取待索引仓库。
+     */
+    @GetMapping("/index/repos")
+    public IndexRepoPage indexRepos(@RequestParam(required = false) Long cursor,
+                                    @RequestParam(defaultValue = "100") int limit) {
+        return documentService.listIndexRepos(cursor, limit);
+    }
+
+    /**
+     * 索引 worker：上报 README 文档与 sha。
+     */
+    @PostMapping("/repo-documents")
+    public Map<String, Object> upsertDocument(@RequestBody RepoDocumentUpsertRequest request) {
+        return Map.of("id", documentService.upsert(request));
+    }
+
+    /**
+     * 索引 worker：标记一批仓库完成索引（断点续跑时用于跳过已完成仓库）。
+     */
+    @PostMapping("/index/mark")
+    public Map<String, Object> markIndexed(@RequestBody IndexMarkRequest request) {
+        documentService.markIndexed(request.repoIds());
+        return Map.of("ok", true);
+    }
+
+    /**
+     * 语义匹配：读取想法（llm-service 侧确认归属）。
+     */
+    @GetMapping("/ideas/{id}")
+    public IdeaResponse idea(@PathVariable Long id,
+                             @RequestParam(required = false) Long userId) {
+        return ideaService.get(id, userId);
+    }
+
+    /**
+     * 语义匹配：落库结构化后的想法。
+     */
+    @PostMapping("/ideas")
+    public Map<String, Object> createIdea(@RequestBody IdeaCreateRequest request) {
+        return Map.of("id", ideaService.create(request).id());
+    }
+
+    /**
+     * 语义匹配：模型重新结构化后回写条件。
+     */
+    @PatchMapping("/ideas/{id}")
+    public IdeaResponse updateIdea(@PathVariable Long id, @RequestBody IdeaUpdateRequest request) {
+        return ideaService.update(id, null, request);
     }
 
     /**
@@ -117,6 +197,14 @@ public class InternalController {
     public Map<String, Object> createMessage(@RequestBody MessageCreateRequest request) {
         Long id = conversationService.append(request);
         return Map.of("id", id);
+    }
+
+    /**
+     * 深度对比：llm-service 生成结果后在此落库。
+     */
+    @PostMapping("/comparisons")
+    public Map<String, Object> createComparison(@RequestBody ComparisonSaveRequest request) {
+        return Map.of("id", comparisonService.create(request));
     }
 
     /**

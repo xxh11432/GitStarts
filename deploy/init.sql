@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS repositories (
     archived      TINYINT DEFAULT 0,
     disabled      TINYINT DEFAULT 0,
     synced_at     DATETIME,
+    readme_sha    VARCHAR(64) COMMENT 'README blob sha（M4 增量索引）',
+    docs_indexed_at DATETIME COMMENT '最近一次完成索引的时间（M4）',
     INDEX idx_stars(stars),
     INDEX idx_language(language),
     INDEX idx_category(category),
@@ -110,6 +112,49 @@ CREATE TABLE IF NOT EXISTS messages (
     tokens_out      INT,
     created_at      DATETIME,
     INDEX idx_conv (conversation_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 用户想法（M4）：AI 只抽取用户明说的条件
+CREATE TABLE IF NOT EXISTS ideas (
+    id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id    BIGINT NOT NULL,
+    title      VARCHAR(200),
+    raw_text   TEXT NOT NULL,
+    structured JSON NOT NULL,
+    revision   INT DEFAULT 1,
+    created_at DATETIME,
+    updated_at DATETIME,
+    KEY idx_user (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 仓库文档（M4）：一期只存 README
+CREATE TABLE IF NOT EXISTS repo_documents (
+    id          BIGINT PRIMARY KEY AUTO_INCREMENT,
+    repo_id     BIGINT NOT NULL,
+    kind        VARCHAR(24) NOT NULL COMMENT 'readme / manifest / tree / docs',
+    source_url  VARCHAR(512),
+    sha         VARCHAR(64),
+    etag        VARCHAR(128) COMMENT '条件请求用',
+    content     MEDIUMTEXT,
+    token_count INT,
+    fetched_at  DATETIME,
+    UNIQUE KEY uk_repo_kind (repo_id, kind)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 深度对比（M5）：结果由 llm-service 生成，backend 只负责落库与分享
+CREATE TABLE IF NOT EXISTS comparisons (
+    id             BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id        BIGINT NOT NULL,
+    idea_id        BIGINT NULL,
+    repo_keys      VARCHAR(512) NOT NULL COMMENT '排序后的 fullName 列表',
+    schema_version VARCHAR(16) NOT NULL,
+    result         MEDIUMTEXT NOT NULL COMMENT 'CompareResult JSON',
+    cache_key      CHAR(64) NOT NULL,
+    share_token    CHAR(32) NULL COMMENT '只读分享 token',
+    created_at     DATETIME,
+    KEY idx_user (user_id, created_at),
+    KEY idx_cache (cache_key),
+    UNIQUE KEY uk_share (share_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 每日用量（配额以 Redis 原子扣减为准，这张表用于成本统计）

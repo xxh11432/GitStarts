@@ -5,7 +5,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import chat, health
+from app.api import chat, compare, health, match
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
@@ -38,6 +38,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router, prefix="/ai", tags=["health"])
     app.include_router(chat.router, prefix="/ai", tags=["chat"])
+    app.include_router(match.router, prefix="/ai", tags=["match"])
+    app.include_router(compare.router, prefix="/ai", tags=["compare"])
 
     @app.exception_handler(Exception)
     async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:

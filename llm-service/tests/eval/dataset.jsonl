@@ -1,0 +1,24 @@
+{"id": "kb-private", "text": "我想私有部署一个知识库，必须能用 Docker 自托管，支持中文全文检索，许可证要宽松一些", "expected": ["infiniflow/ragflow", "langgenius/dify", "outline/outline"], "notes": "硬条件：Docker、中文全文、宽松许可"}
+{"id": "kb-rag", "text": "团队要做一个基于 RAG 的文档问答系统，需要能接入自己的 PDF，最好有现成的 Web 界面", "expected": ["infiniflow/ragflow", "langgenius/dify", "QuivrHQ/quivr"], "notes": "语义：RAG + PDF + Web UI"}
+{"id": "bi-dashboard", "text": "想找一个开源 BI 看板，能从 MySQL 取数并做拖拽报表，支持多数据源", "expected": ["apache/superset", "metabase/metabase", "getredash/redash"], "notes": "BI + 拖拽 + 多数据源"}
+{"id": "lowcode-form", "text": "需要一个低代码平台，内部人员可以自己搭表单和简单审批流，支持自托管", "expected": ["budibase/budibase", "ToolJet/ToolJet", "appsmithorg/appsmith"], "notes": "低代码 + 审批 + 自托管"}
+{"id": "automation", "text": "想把 CRM、邮件和表格串起来做自动化工作流，最好是可视化编排，能自己部署", "expected": ["n8n-io/n8n", "activepieces/activepieces", "huginn/huginn"], "notes": "工作流 + 可视化 + 自托管"}
+{"id": "notes-selfhost", "text": "找一款自托管笔记软件，支持 Markdown 和双向链接，数据要存在自己服务器", "expected": ["siyuan-note/siyuan", "laurent22/joplin", "outline/outline"], "notes": "笔记 + Markdown + 双向链接"}
+{"id": "team-chat", "text": "公司想自建内部聊天工具，要有频道、文件传输和移动端，能私有部署", "expected": ["mattermost/mattermost", "RocketChat/Rocket.Chat", "element-hq/element-web"], "notes": "IM + 私有部署"}
+{"id": "newsletter", "text": "运营需要一套邮件订阅和群发系统，支持订阅列表管理和自托管，最好 MIT 许可", "expected": ["listmonk/listmonk", "mailcow/mailcow-dockerized"], "notes": "许可硬条件 MIT"}
+{"id": "file-sync", "text": "想搭建私有网盘，支持文件同步、分享链接和手机客户端，开源可自托管", "expected": ["nextcloud/server", "syncthing/syncthing", "filebrowser/filebrowser"], "notes": "网盘 + 同步 + 分享"}
+{"id": "monitoring", "text": "需要一套服务器监控和告警系统，能自定义告警规则，部署简单一点", "expected": ["prometheus/prometheus", "grafana/grafana", "louislam/uptime-kuma"], "notes": "监控 + 告警"}
+{"id": "logs", "text": "想集中收集容器日志并做检索和看板，最好和 Grafana 生态兼容", "expected": ["grafana/loki", "grafana/grafana", "elastic/elasticsearch"], "notes": "日志 + Grafana"}
+{"id": "vector-db", "text": "需要给语义检索选一个向量数据库，要求支持过滤、水平扩展，最好有 Python 客户端", "expected": ["qdrant/qdrant", "milvus-io/milvus", "weaviate/weaviate"], "notes": "向量库 + 过滤 + 扩展"}
+{"id": "llm-gateway", "text": "想统一管理多个大模型 API，做密钥分发、额度和用量统计，能自己部署", "expected": ["songquanpeng/one-api", "BerriAI/litellm", "Portkey-AI/gateway"], "notes": "LLM 网关 + 额度"}
+{"id": "agent-framework", "text": "开发一个多 Agent 协作应用，需要工具调用、记忆和可视化编排，语言不限", "expected": ["langchain-ai/langchain", "microsoft/autogen", "crewAIInc/crewAI"], "notes": "Agent 框架 + 工具调用"}
+{"id": "document-ocr", "text": "要批量解析扫描版 PDF，提取表格和段落，最好能本地部署，不一定需要界面", "expected": ["Unstructured-IO/unstructured", "PaddlePaddle/PaddleOCR", "VikParuchuri/marker"], "notes": "OCR + PDF + 表格"}
+{"id": "speech-to-text", "text": "想把会议录音转成文字，要求离线可用、支持中文，最好有 GPU 加速", "expected": ["openai/whisper", "SYSTRAN/faster-whisper", "ggml-org/whisper.cpp"], "notes": "ASR + 中文 + 离线"}
+{"id": "labeling", "text": "团队要做图像标注，需要多边形标注、多人协作和导出 COCO 格式", "expected": ["HumanSignal/label-studio", "cvat-ai/cvat"], "notes": "标注 + COCO + 协作"}
+{"id": "crawler", "text": "需要一个爬虫框架，能处理登录、分页和反爬，支持分布式调度", "expected": ["scrapy/scrapy", "apify/crawlee", "crawlab-team/crawlab"], "notes": "爬虫 + 分布式"}
+{"id": "api-mock", "text": "前后端联调想要一个可自托管的 Mock Server，支持 OpenAPI 导入和动态响应", "expected": ["mockoon/mockoon", "wiremock/wiremock", "mock-server/mockserver"], "notes": "Mock + OpenAPI"}
+{"id": "db-client", "text": "找一个开源的数据库管理工具，支持 MySQL、PostgreSQL 和 SSH 隧道，桌面端更好", "expected": ["dbeaver/dbeaver", "beekeeper-studio/beekeeper-studio", "pgadmin-org/pgadmin4"], "notes": "DB 客户端 + 多库"}
+{"id": "typo-search", "text": "想给站内搜索加上拼写容错和中文分词，最好能自托管，有现成 API", "expected": ["typesense/typesense", "meilisearch/meilisearch", "quickwit-oss/quickwit"], "notes": "搜索 + 容错 + 自托管"}
+{"id": "cicd", "text": "想给私有 Git 仓库搭一套 CI/CD，支持流水线和 Kubernetes 部署，界面友好", "expected": ["jenkinsci/jenkins", "argoproj/argo-cd", "drone/drone"], "notes": "CI/CD + K8s"}
+{"id": "api-gateway", "text": "微服务需要一个开源 API 网关，支持限流、鉴权和动态路由，性能要好", "expected": ["Kong/kong", "apache/apisix", "traefik/traefik"], "notes": "网关 + 限流 + 鉴权"}
+{"id": "authz", "text": "要给内部系统做统一登录和权限控制，支持 RBAC、OIDC 和自托管", "expected": ["casbin/casbin", "ory/kratos", "authelia/authelia"], "notes": "IAM + RBAC + OIDC"}

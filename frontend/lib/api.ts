@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import type { CompareResultView } from './compare';
 import type { Me, MetaResponse, PageResult, ReadmeSummary, Repo } from './types';
 
 const INTERNAL = process.env.API_INTERNAL_URL;
@@ -60,6 +61,21 @@ export async function fetchRepoSummary(fullName: string): Promise<ReadmeSummary>
 
 export async function fetchSimilarRepos(fullName: string, limit = 6): Promise<Repo[]> {
   return getJson(`${API_BASE}/repos/similar/${fullName}?limit=${limit}`);
+}
+
+/**
+ * 服务端读取只读分享的对比：无需登录，且只返回这一条对比。
+ */
+export async function fetchSharedComparison(token: string): Promise<{
+  repoKeys: string[];
+  schemaVersion: string;
+  result: CompareResultView;
+  createdAt?: string;
+}> {
+  if (!/^[a-f0-9]{32}$/i.test(token)) {
+    throw new Error('分享链接无效');
+  }
+  return getJson(`${API_BASE}/comparisons/share/${token}`);
 }
 
 /**

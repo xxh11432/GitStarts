@@ -31,6 +31,8 @@ public class Repository {
     private Integer archived;
     private Integer disabled;
     private LocalDateTime syncedAt;
+    private String readmeSha;
+    private LocalDateTime docsIndexedAt;
 
     public Long getId() {
         return id;
@@ -198,5 +200,21 @@ public class Repository {
 
     public void setSyncedAt(LocalDateTime syncedAt) {
         this.syncedAt = syncedAt;
+    }
+
+    public String getReadmeSha() {
+        return readmeSha;
+    }
+
+    public void setReadmeSha(String readmeSha) {
+        this.readmeSha = readmeSha;
+    }
+
+    public LocalDateTime getDocsIndexedAt() {
+        return docsIndexedAt;
+    }
+
+    public void setDocsIndexedAt(LocalDateTime docsIndexedAt) {
+        this.docsIndexedAt = docsIndexedAt;
     }
 }

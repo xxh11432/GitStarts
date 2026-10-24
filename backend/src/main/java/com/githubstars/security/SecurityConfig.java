@@ -58,9 +58,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/health", "/repos/**", "/meta",
                                 "/auth/github/login", "/auth/github/callback", "/auth/csrf",
-                                "/oauth2/**", "/login/**").permitAll()
+                                "/oauth2/**", "/login/**", "/comparisons/share/**").permitAll()
                         .requestMatchers("/internal/**").permitAll()
-                        .requestMatchers("/auth/me", "/auth/logout", "/quota").authenticated()
+                        .requestMatchers("/auth/me", "/auth/logout", "/quota", "/ideas/**",
+                                "/comparisons/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth -> oauth
                         .redirectionEndpoint(endpoint -> endpoint.baseUri("/auth/github/callback"))

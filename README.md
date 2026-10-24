@@ -84,6 +84,8 @@ fit = 0.45 × 语义相关
 - **M1 账号会话与配额**：GitHub OAuth 登录闭环、Spring Session Redis（7 天）、每日配额 Redis 原子扣减、`/ai/**` 未登录 401（Nginx auth_request）、登录页与 `/me`、`/compare` 路由保护
 - **M2 仓库数据补强**：`platform` 规则推导与筛选、许可证与更新时间筛选、详情页 README 摘要与相关推荐、首页平台/统计模块、列表与详情新视觉及移动端筛选抽屉
 - **M3 AI 对话 MVP**：`/ai/chat/stream` SSE 流式（`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error`）、工具调用（`search_repos` / `get_repo` / `get_rank`）、首页对话与仓库卡、会话与消息异步落库
+- **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → fastembed embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 硬过滤 → 向量召回 + 关键词补充 → LLM 重排 ±0.1 → 四维契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 `recall@10` 报告脚本
+- **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
 
 **规划中（AI 升级）**
 
@@ -93,8 +95,8 @@ fit = 0.45 × 语义相关
 | M1 | GitHub OAuth、会话（Spring Session）、每日配额原子扣减 | 已完成 |
 | M2 | 仓库数据补强：`platform` 字段、许可与更新时间筛选、相关推荐 | 已完成 |
 | M3 | AI 网关与对话 MVP：SSE 流式、工具调用（`search_repos` / `get_repo` / `get_rank`） | 已完成 |
-| M4 | 语义索引与匹配：README 分块 embedding、召回重排、`/ai/match` | 待启动 |
-| M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 待启动 |
+| M4 | 语义索引与匹配：README 分块 embedding、召回重排、`/ai/match` | 已完成 |
+| M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 已完成 |
 | M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 待启动 |
 | M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 待启动 |
 
@@ -129,8 +131,8 @@ flowchart TB
     L --> Q
     L --> LLM
     W --> G
+    W --> B
     W --> Q
-    W --> M
 
     style B fill:#e8f5e9,color:#1b5e20
     style L fill:#e3f2fd,color:#0d47a1
@@ -144,7 +146,7 @@ flowchart TB
 | `frontend` | 页面、SSE 消费、流式渲染 | 持有模型 Key、拼 prompt、直连向量库 |
 | `backend` | 账号、配额、持久化、仓库检索（唯一数据出口） | 引入模型 SDK、感知 prompt 与模型厂商 |
 | `llm-service` | 唯一模型出口、prompt、工具编排、重排、SSE | 直连 MySQL、判断业务权限 |
-| `ingest-worker` | 抓取、清洗、分块、embedding、写索引 | 对外提供业务 API |
+| `ingest-worker` | 抓取、清洗、分块、embedding、写索引；经 backend 内部接口读写文档元数据 | 直连 MySQL、对外提供业务 API |
 
 ## 技术栈
 
@@ -172,9 +174,19 @@ docker compose up -d --build
 
 首次 `--build` 会预热 embedding 模型（约 2 GB），构建较慢；可设 `PREWARM_MODELS=false` 跳过，模型改在首次请求时下载。
 
-> 从 M0 升级到 M1 时，已有 MySQL 数据卷不会自动执行新增表；`deploy/init.sql` 全部使用 `CREATE TABLE IF NOT EXISTS`，可安全重跑：
-> `docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" < deploy/init.sql`。
-> 同时在 `.env` 填入 GitHub OAuth App 的 `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET`，回调地址设为 `http://<host>/api/auth/github/callback`。
+> 从 M4 升级到 M5 时，已有数据库需补 `comparisons` 表（新库由 `deploy/init.sql` 直接创建，无需执行）：
+> 重跑 `deploy/init.sql` 即可（全部为 `CREATE TABLE IF NOT EXISTS`）。
+>
+> 从 M3 升级到 M4 时，除重跑 `deploy/init.sql` 建 `ideas` / `repo_documents` 外，
+> 已有 `repositories` 表需要补两列（全新初始化可跳过）：
+>
+> ```sql
+> ALTER TABLE repositories
+>   ADD COLUMN readme_sha VARCHAR(64) COMMENT 'README blob sha',
+>   ADD COLUMN docs_indexed_at DATETIME COMMENT '最近完成索引时间';
+> ```
+>
+> 然后在 `.env` 打开 worker（`INDEX_ON_STARTUP=true`），首次启动会自动构建 README 索引。
 >
 > 从 M1 升级到 M2 时，已有数据库需补 `repositories.platform` 列与索引（新库由 `deploy/init.sql` 直接创建，无需执行）：
 > `docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "ALTER TABLE repositories ADD COLUMN platform VARCHAR(32) NULL AFTER category, ADD INDEX idx_platform(platform), ADD INDEX idx_pushed_at(pushed_at)"'`。
@@ -182,6 +194,9 @@ docker compose up -d --build
 >
 > 从 M2 升级到 M3 时，已有数据库需补会话与消息表（新库由 `deploy/init.sql` 直接创建，无需执行）：
 > `docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /docker-entrypoint-initdb.d/init.sql'` 可重跑建表脚本（全部为 `CREATE TABLE IF NOT EXISTS`）。
+>
+> 从 M0 升级到 M1 时，已有 MySQL 数据卷不会自动执行新增表；可在 `.env` 填入 GitHub OAuth App 的
+> `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET`，回调地址设为 `http://<host>/api/auth/github/callback`。
 
 启动后访问 `http://localhost`（Nginx → 前端，`/api/` 反代到后端，`/ai/` 反代到 llm-service）。`/api/internal/**` 对外直接 404。
 
@@ -206,10 +221,14 @@ cd llm-service
 uv sync
 uv run uvicorn app.main:app --reload --port 8081
 
-# 索引 worker（占位，M4 起执行抓取/索引任务）
+# 索引 worker（M4：全量首建 → 定时增量）
 cd llm-service
 uv run python -m worker
 ```
+
+首次启动 worker 会自动全量索引已采集仓库的 README（可设 `INDEX_MAX_REPOS=50` 先小样本验证）；
+完成后每 `INDEX_INTERVAL_MINUTES` 分钟扫描 `pushed_at` 变化，按 ETag 条件请求跳过未变更 README。
+中断后可从 Redis 游标续跑；同一时间只允许一个 worker 持锁执行。
 
 关键环境变量：
 
@@ -228,7 +247,16 @@ uv run python -m worker
 | `PREWARM_MODELS` | 镜像构建期是否预热 embedding 模型 |
 | `INTERNAL_TOKEN` | 服务间调用鉴权（M0 起） |
 | `BACKEND_URL` | llm-service 访问 backend 内部接口的地址（Compose 内为 `http://backend:8080`） |
-| `QDRANT_URL` | 向量库地址（M0 起） |
+| `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址与集合名（默认 `repo_chunks`） |
+| `INDEX_ON_STARTUP` / `INDEX_INTERVAL_MINUTES` | worker 首次是否全量、之后增量扫描间隔（分钟） |
+| `INDEX_FULL_REBUILD` / `INDEX_MAX_REPOS` | 强制重扫全部仓库 / 小样本仓库数上限（0 为不限） |
+| `MATCH_RECALL_LIMIT` / `MATCH_RERANK_LIMIT` | 向量召回条数 / LLM 重排候选数 |
+| `MATCH_CACHE_TTL_SECONDS` | 匹配结果缓存秒数（默认 600） |
+| `COMPARE_EVIDENCE_TOPK` | 对比每个维度召回的 README / manifest 证据条数（默认 6） |
+| `COMPARE_CACHE_TTL_SECONDS` | 对比结果缓存秒数（默认 7 天，命中不计费） |
+| `COMPARE_CHECKPOINT_TTL_SECONDS` | 断流续跑 checkpoint 秒数（默认 3600） |
+| `COMPARE_TIMEOUT_SECONDS` | 单次对比总超时（默认 240 秒） |
+| `INDEX_MANIFESTS_ENABLED` | worker 是否抓取关键 manifest（package.json / pom.xml 等）并入索引（默认 true） |
 
 ## 目录结构
 
@@ -243,18 +271,18 @@ GitStarts/
 │       ├── mapper/ entity/   # MyBatis-Plus
 │       └── config/           # Redis、线程池、调度
 ├── frontend/                 # Next.js 14
-│   ├── app/                  # 首页 / 仓库 / 登录 / 个人中心 / 对比
-│   ├── components/           # Navbar / HeroComposer / StreamingMarkdown / RepoMiniCard / RepoCard / FilterBar
+│   ├── app/                  # 首页 / 仓库 / 匹配 / 登录 / 个人中心 / 对比
+│   ├── components/           # Navbar / HeroComposer / StreamingMarkdown / RepoCard / match/（条件编辑、候选卡、契合度）/ compare/（对比矩阵、证据抽屉、加入对比）
 │   └── lib/                  # API 封装、SSE 客户端、客户端会话与 CSRF 工具、类型
 ├── llm-service/              # Python AI 网关（API 与 worker 同镜像）
 │   ├── app/                  # FastAPI：api / core / clients / graphs / tools / services / schemas
-│   ├── worker/               # python -m worker，APScheduler 任务入口
-│   ├── tests/                # pytest（SSE 与工具契约测试）
+│   ├── worker/               # python -m worker：fetch_docs / chunk / embed / index / pipeline
+│   ├── tests/                # pytest + tests/eval（匹配评测数据集与脚本）
 │   ├── pyproject.toml        # uv 依赖与 ruff / pytest 配置
 │   └── Dockerfile            # 多阶段构建，含 embedding 预热
 ├── deploy/init.sql           # MySQL 建表与初始化
 ├── nginx/nginx.conf          # 反向代理（/api/、/ai/、内部接口隔离）
-├── doc/                      # 技术方案
+├── doc/                      # 技术方案、eval/baseline.md
 └── docker-compose.yml
 ```
 
@@ -274,19 +302,34 @@ GitStarts/
 | GET | `/api/auth/me` | 当前登录用户与今日配额（未登录 401） |
 | POST | `/api/auth/logout` | 退出登录（需 CSRF token） |
 | GET | `/api/quota` | 今日对话 / 对比配额（未登录 401） |
+| POST | `/api/ideas` | 保存想法与结构化条件（登录 + CSRF） |
+| GET | `/api/ideas` | 我的想法分页列表 |
+| GET | `/api/ideas/{id}` | 想法详情（仅本人） |
+| PATCH | `/api/ideas/{id}` | 编辑标题或结构化条件（仅本人，需 CSRF） |
+| GET | `/api/comparisons` | 我的对比历史（分页） |
+| GET | `/api/comparisons/{id}` | 对比详情（仅本人） |
+| POST | `/api/comparisons/{id}/share` | 生成（或复用）只读分享 token（仅本人，需 CSRF） |
+| GET | `/api/comparisons/share/{token}` | 只读分享内容，无需登录 |
 | GET | `/api/health` | 健康检查 |
 | GET | `/ai/health` | AI 网关健康检查（含 Qdrant 连通性，始终 200） |
 | POST | `/ai/chat/stream` | AI 对话 SSE（需登录，`X-User-Id` 由 Nginx 透传）：`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error` |
+| POST | `/ai/match` | 语义匹配 SSE（需登录）：请求 `{ideaId?, rawText?, structured?, limit?}`，事件 `parsed` / `status` / `candidate` / `done` / `error` |
+| POST | `/ai/compare` | 深度对比 SSE（需登录）：请求 `{ideaId?, rawText?, structured?, repoKeys[2–4], force?}`，事件 `plan` / `cell` / `verdict` / `done` / `error` |
 
-服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`（原子扣减，超限 429）、`GET /api/internal/repos/search`、`GET /api/internal/repos/rank`、`GET /api/internal/repos/{fullName}`、`POST /api/internal/conversations`、`POST /api/internal/messages`、`GET /api/internal/auth/session`（供 Nginx `auth_request` 校验会话并回传 `X-User-Id`）。`/ai/**` 除 `/ai/health` 外均要求登录，未登录由 Nginx 返回 401 JSON。
+`/ai/match` 的 `candidate` 包含：仓库卡、`fit`（0–1）、`breakdown`（semantic / coverage / maintenance / license）、`reasons` / `risks`、`conditions`（hit / miss / unknown）与可追溯的 README `evidence`。信息不足时返回 `unknown`，不会臆造。
 
-规划接口：`POST /ai/match`、`POST /ai/compare`，均以 SSE 推送事件（`parsed` / `status` / `candidate` / `cell` / `verdict` / `done` / `error`），业务侧 `/api/ideas`、`/api/favorites` 等。服务间接口统一收在 `/api/internal/`，Nginx 对外直接返回 404。
+`/ai/compare` 的 `cell` 包含：`dimensionKey` / `repoKey` / `value` / `confidence` 与 `evidence[]`（section、snippet、sourceUrl、chunkType）。没有证据的单元格固定为「信息不足」；`done` 返回落库的 `comparisonId`（未落库为 null），`cached=true` 表示命中缓存且未扣配额。
+
+服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`、`GET /api/internal/repos/search`、`GET /api/internal/repos/rank`、`GET /api/internal/repos/{fullName}`、`POST /api/internal/repos/batch`、`GET /api/internal/index/repos`、`POST /api/internal/repo-documents`、`POST /api/internal/index/mark`、`POST /api/internal/conversations`、`POST /api/internal/messages`、`GET|POST|PATCH /api/internal/ideas*`、`POST /api/internal/comparisons`、`GET /api/internal/auth/session`。
+
+规划接口：`/api/favorites`。服务间接口统一收在 `/api/internal/`，Nginx 对外直接返回 404。
 
 ## 数据与索引
 
-- **MySQL**：`repositories`（仓库主表，含 `category` 规则分类与 `platform` 平台维度）+ `tags` / `repo_tags`（分类与标签）+ `sync_logs`（采集日志）；AI 阶段新增 `users` / `ideas` / `conversations` / `messages` / `comparisons` / `favorites` / `usage_daily`。
-- **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `language` / `category` / `license` / `stars` / `pushed_at` 供过滤。本地 embedding 使用 fastembed（fastembed 未提供 bge-m3 ONNX 版本，默认 `intfloat/multilingual-e5-large`；需要 bge-m3 时切 `EMBEDDING_PROVIDER=api`）。
-- **缓存**：匹配结果 10 分钟、对比结果 7 天、榜单与元数据 5 分钟、embedding 按 chunk hash 永久。
+- **MySQL**：`repositories`（仓库主表，含 `category`、`platform`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `users` / `conversations` / `messages` / `usage_daily`。
+- **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。
+- **缓存**：匹配结果 10 分钟、对比结果 7 天、对比 checkpoint 1 小时、榜单与元数据 5 分钟；索引 worker 用 Redis 锁 + 游标实现断点续跑。
+- **评测**：`llm-service/tests/eval/dataset.jsonl`（24 条需求）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；`python -m tests.eval.run_eval` / `run_compare_eval` 分别生成匹配与对比报告。
 
 ## 安全与合规
 
@@ -300,6 +343,8 @@ GitStarts/
 
 - [完整方案（v1.1，Python + LangGraph）](doc/AI匹配与对比平台完整方案.md)
 - [技术方案（基线）](doc/技术方案.md)：技术栈、表结构、采集引擎与阶段计划
+- [语义匹配基线报告](doc/eval/baseline.md)：数据集、指标定义与运行结果
+- [深度对比评测](doc/eval/compare.md)：10 个热门项目盲测数据集、证据覆盖率与信息不足率
 
 ## 贡献
 
