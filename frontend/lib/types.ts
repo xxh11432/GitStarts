@@ -8,6 +8,7 @@ export interface MetaResponse {
   categories: FacetItem[];
   languages: FacetItem[];
   topics: FacetItem[];
+  platforms: FacetItem[];
 }
 
 export interface Repo {
@@ -25,9 +26,16 @@ export interface Repo {
   openIssues: number;
   topics: string[];
   category?: string;
+  platform?: string;
   defaultBranch?: string;
   pushedAt?: string;
   createdAt?: string;
+}
+
+export interface ReadmeSummary {
+  fullName: string;
+  summary?: string;
+  sourceUrl: string;
 }
 
 export interface PageResult<T> {
@@ -35,4 +43,22 @@ export interface PageResult<T> {
   total: number;
   page: number;
   size: number;
+}
+
+export interface QuotaView {
+  used: number;
+  limit: number;
+}
+
+export interface Quota {
+  chat: QuotaView;
+  compare: QuotaView;
+  resetAt: string;
+}
+
+export interface Me {
+  id: number;
+  nickname?: string;
+  avatarUrl?: string;
+  quota: Quota;
 }

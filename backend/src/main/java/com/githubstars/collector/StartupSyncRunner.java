@@ -30,12 +30,15 @@ public class StartupSyncRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        long count = syncService.countRepos();
+        if (count > 0) {
+            syncExecutor.submit(() -> syncService.backfillPlatforms());
+            return;
+        }
         if (!syncEnabled) {
             return;
         }
-        if (syncService.countRepos() == 0) {
-            log.info("仓库表为空，触发首次全量同步");
-            syncExecutor.submit(() -> syncService.fullSync());
-        }
+        log.info("仓库表为空，触发首次全量同步");
+        syncExecutor.submit(() -> syncService.fullSync());
     }
 }

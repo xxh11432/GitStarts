@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS repositories (
     open_issues   INT DEFAULT 0,
     topics        JSON COMMENT '标签数组',
     category      VARCHAR(64) COMMENT '分类（由规则推导）',
+    platform      VARCHAR(32) COMMENT '平台（windows/mac/linux/android/ios/harmony/extension/other）',
     default_branch VARCHAR(64),
     pushed_at     DATETIME,
     created_at    DATETIME,
@@ -28,7 +29,9 @@ CREATE TABLE IF NOT EXISTS repositories (
     synced_at     DATETIME,
     INDEX idx_stars(stars),
     INDEX idx_language(language),
-    INDEX idx_category(category)
+    INDEX idx_category(category),
+    INDEX idx_platform(platform),
+    INDEX idx_pushed_at(pushed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 标签表
@@ -60,3 +63,37 @@ CREATE TABLE IF NOT EXISTS sync_logs (
     failed       INT DEFAULT 0,
     error_detail TEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 账号（M1）：一期仅 GitHub OAuth
+CREATE TABLE IF NOT EXISTS users (
+    id             BIGINT PRIMARY KEY AUTO_INCREMENT,
+    provider       VARCHAR(16) NOT NULL COMMENT 'github',
+    provider_uid   VARCHAR(64) NOT NULL COMMENT 'GitHub user id',
+    email          VARCHAR(255),
+    nickname       VARCHAR(128),
+    avatar_url     VARCHAR(512),
+    created_at     DATETIME,
+    last_login_at  DATETIME,
+    UNIQUE KEY uk_provider (provider, provider_uid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 用户画像（M6 使用，M1 建表）
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id     BIGINT PRIMARY KEY,
+    skills      JSON,
+    interests   JSON,
+    preferences JSON,
+    updated_at  DATETIME
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 每日用量（配额以 Redis 原子扣减为准，这张表用于成本统计）
+CREATE TABLE IF NOT EXISTS usage_daily (
+    user_id       BIGINT NOT NULL,
+    day           DATE NOT NULL,
+    chat_count    INT DEFAULT 0,
+    compare_count INT DEFAULT 0,
+    tokens_in     BIGINT DEFAULT 0,
+    tokens_out    BIGINT DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

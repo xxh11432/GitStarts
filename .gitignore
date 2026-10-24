@@ -4,6 +4,7 @@
 # Frontend
 node_modules/
 .next/
+*.tsbuildinfo
 
 # Python (llm-service)
 .venv/

@@ -34,6 +34,7 @@ public class RepoAssembler {
                 repo.getOpenIssues(),
                 parseTopics(repo.getTopics()),
                 repo.getCategory(),
+                repo.getPlatform(),
                 repo.getDefaultBranch(),
                 repo.getPushedAt(),
                 repo.getCreatedAt());

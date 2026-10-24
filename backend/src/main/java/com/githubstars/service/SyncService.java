@@ -40,6 +40,7 @@ public class SyncService {
     private final SyncLogMapper syncLogMapper;
     private final TagService tagService;
     private final Categorizer categorizer;
+    private final PlatformResolver platformResolver;
     private final StringRedisTemplate redisTemplate;
     private final ThreadPoolTaskExecutor syncExecutor;
 
@@ -48,6 +49,7 @@ public class SyncService {
                        SyncLogMapper syncLogMapper,
                        TagService tagService,
                        Categorizer categorizer,
+                       PlatformResolver platformResolver,
                        StringRedisTemplate redisTemplate,
                        @Qualifier("syncExecutor") ThreadPoolTaskExecutor syncExecutor) {
         this.githubClient = githubClient;
@@ -55,6 +57,7 @@ public class SyncService {
         this.syncLogMapper = syncLogMapper;
         this.tagService = tagService;
         this.categorizer = categorizer;
+        this.platformResolver = platformResolver;
         this.redisTemplate = redisTemplate;
         this.syncExecutor = syncExecutor;
     }
@@ -62,6 +65,25 @@ public class SyncService {
     public long countRepos() {
         Long count = repositoryMapper.selectCount(null);
         return count == null ? 0 : count;
+    }
+
+    /**
+     * 为 M2 之前入库的仓库补算平台。启动时执行一次，按需分批处理。
+     */
+    public int backfillPlatforms() {
+        List<Repository> repos = repositoryMapper.selectList(new LambdaQueryWrapper<Repository>()
+                .isNull(Repository::getPlatform)
+                .last("LIMIT 5000"));
+        int updated = 0;
+        for (Repository repo : repos) {
+            repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
+            repositoryMapper.updateById(repo);
+            updated++;
+        }
+        if (updated > 0) {
+            log.info("平台回填完成，更新 {} 个仓库", updated);
+        }
+        return updated;
     }
 
     public void fullSync() {
@@ -231,6 +253,7 @@ public class SyncService {
         repo.setArchived(item.path("archived").asBoolean(false) ? 1 : 0);
         repo.setDisabled(item.path("disabled").asBoolean(false) ? 1 : 0);
         repo.setCategory(categorizer.categorize(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
+        repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
         repo.setSyncedAt(LocalDateTime.now());
         return repo;
     }

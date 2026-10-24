@@ -37,12 +37,34 @@ export default async function HomePage() {
         <HeroComposer />
         <ExamplePrompts items={examples} />
 
-        <dl className="mx-auto mt-10 grid max-w-3xl grid-cols-3 divide-x divide-line rounded-card border border-line bg-surface">
+        <dl className="mx-auto mt-10 grid max-w-3xl grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-4">
           <Stat label="已收录仓库" value={counter.total} />
           <Stat label="覆盖语言" value={meta.languages.length} />
+          <Stat label="覆盖平台" value={meta.platforms.length} />
           <Stat label="覆盖分类" value={meta.categories.length} />
         </dl>
       </section>
+
+      {meta.platforms.length > 0 && (
+        <section>
+          <SectionHeader title="按平台浏览" href="/repos" />
+          <div className="flex flex-wrap gap-2">
+            {meta.platforms
+              .filter((platform) => platform.slug !== 'other')
+              .slice(0, 8)
+              .map((platform) => (
+                <Link
+                  key={platform.slug}
+                  href={`/repos?platform=${encodeURIComponent(platform.slug)}`}
+                  className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-ink-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+                >
+                  {platform.name}
+                  <span className="ml-1.5 text-xs tabular-nums text-ink-muted">{platform.count}</span>
+                </Link>
+              ))}
+          </div>
+        </section>
+      )}
 
       {meta.categories.length > 0 && (
         <section>
@@ -76,7 +98,7 @@ export default async function HomePage() {
       </section>
 
       <section>
-        <SectionHeader title="最近更新" href="/repos?sort=pushed&order=desc" />
+        <SectionHeader title="最近更新" href="/repos?sort=pushedAt&order=desc" />
         {recentResult.items.length === 0 ? (
           <EmptyState />
         ) : (
@@ -104,7 +126,7 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="px-3 py-4 text-center sm:py-5">
+    <div className="bg-surface px-3 py-4 text-center sm:py-5">
       <dd className="text-2xl font-semibold tabular-nums text-ink">
         {value.toLocaleString('zh-CN')}
       </dd>

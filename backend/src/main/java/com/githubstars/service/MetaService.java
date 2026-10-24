@@ -27,16 +27,36 @@ public class MetaService {
         this.cacheService = cacheService;
     }
 
+    private static final Map<String, String> PLATFORM_LABELS = Map.of(
+            "windows", "Windows",
+            "mac", "macOS",
+            "linux", "Linux",
+            "android", "Android",
+            "ios", "iOS",
+            "harmony", "HarmonyOS",
+            "extension", "浏览器扩展",
+            "other", "其他");
+
     public MetaResponse meta() {
-        String key = "meta:facets";
+        String key = "meta:facets:v2";
         return cacheService.get(key, MetaResponse.class).orElseGet(() -> {
             MetaResponse response = new MetaResponse(
                     facetsBySlugify(repositoryMapper.countByCategory()),
                     facetsBySlugify(repositoryMapper.countByLanguage()),
-                    facetsWithSlug(tagMapper.selectTopTopics(50)));
+                    facetsWithSlug(tagMapper.selectTopTopics(50)),
+                    platformFacets());
             cacheService.set(key, response, Duration.ofMinutes(10));
             return response;
         });
+    }
+
+    private List<FacetItem> platformFacets() {
+        return repositoryMapper.countByPlatform().stream()
+                .map(row -> {
+                    String name = String.valueOf(row.get("name"));
+                    return new FacetItem(PLATFORM_LABELS.getOrDefault(name, name), name, countOf(row));
+                })
+                .collect(Collectors.toList());
     }
 
     private List<FacetItem> facetsBySlugify(List<Map<String, Object>> rows) {

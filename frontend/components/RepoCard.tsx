@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { platformLabel } from '@/lib/labels';
 import type { Repo } from '@/lib/types';
 
 function formatCount(n: number): string {
@@ -21,6 +22,7 @@ function formatDate(value?: string): string | null {
 
 export default function RepoCard({ repo }: { repo: Repo }) {
   const updatedAt = formatDate(repo.pushedAt);
+  const platform = platformLabel(repo.platform);
 
   return (
     <article className="rounded-card border border-line bg-background p-4 shadow-card transition duration-150 ease-out hover:border-gray-300 hover:shadow-card-hover">
@@ -47,6 +49,11 @@ export default function RepoCard({ repo }: { repo: Repo }) {
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-ink-muted" />
             {repo.language}
+          </span>
+        )}
+        {platform && (
+          <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-ink-secondary">
+            {platform}
           </span>
         )}
         {repo.category && (

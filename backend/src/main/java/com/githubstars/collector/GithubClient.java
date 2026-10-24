@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+
+import java.util.List;
 
 @Component
 public class GithubClient {
@@ -57,6 +60,18 @@ public class GithubClient {
                 .retrieve()
                 .body(String.class);
         return parse(body);
+    }
+
+    /**
+     * 读取 README 原文（Markdown）。私有仓库或未配置 README 时返回 null。
+     */
+    public String getReadme(String owner, String name) {
+        restRateLimiter.acquire();
+        return restClient.get()
+                .uri("/repos/{owner}/{repo}/readme", owner, name)
+                .headers(headers -> headers.setAccept(List.of(MediaType.valueOf("application/vnd.github.raw"))))
+                .retrieve()
+                .body(String.class);
     }
 
     private JsonNode parse(String body) {

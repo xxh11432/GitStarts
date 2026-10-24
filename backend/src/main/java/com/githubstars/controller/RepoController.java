@@ -1,6 +1,7 @@
 package com.githubstars.controller;
 
 import com.githubstars.dto.PageResult;
+import com.githubstars.dto.ReadmeSummary;
 import com.githubstars.dto.RepoResponse;
 import com.githubstars.service.RankService;
 import com.githubstars.service.RepoService;
@@ -30,11 +31,13 @@ public class RepoController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String language,
             @RequestParam(required = false) String topic,
+            @RequestParam(required = false) String platform,
+            @RequestParam(required = false) String license,
             @RequestParam(defaultValue = "stars") String sort,
             @RequestParam(defaultValue = "desc") String order,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return repoService.listRepos(q, category, language, topic, sort, order, page, size);
+        return repoService.listRepos(q, category, language, topic, platform, license, sort, order, page, size);
     }
 
     @GetMapping("/rank")
@@ -43,6 +46,17 @@ public class RepoController {
             @RequestParam(required = false) String language,
             @RequestParam(defaultValue = "20") int limit) {
         return rankService.rank(type, language, limit);
+    }
+
+    @GetMapping("/similar/{*fullName}")
+    public List<RepoResponse> similar(@PathVariable String fullName,
+                                      @RequestParam(defaultValue = "6") int limit) {
+        return repoService.similarRepos(fullName, limit);
+    }
+
+    @GetMapping("/{owner}/{repo}/readme")
+    public ReadmeSummary readme(@PathVariable String owner, @PathVariable String repo) {
+        return repoService.readmeSummary(owner + "/" + repo);
     }
 
     @GetMapping("/{*fullName}")

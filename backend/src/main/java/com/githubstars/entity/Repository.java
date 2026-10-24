@@ -24,6 +24,7 @@ public class Repository {
     private Integer openIssues;
     private String topics;
     private String category;
+    private String platform;
     private String defaultBranch;
     private LocalDateTime pushedAt;
     private LocalDateTime createdAt;
@@ -141,6 +142,14 @@ public class Repository {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public String getPlatform() {
+        return platform;
+    }
+
+    public void setPlatform(String platform) {
+        this.platform = platform;
     }
 
     public String getDefaultBranch() {

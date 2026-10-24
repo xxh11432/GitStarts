@@ -18,6 +18,7 @@ public record RepoResponse(
         Integer openIssues,
         List<String> topics,
         String category,
+        String platform,
         String defaultBranch,
         LocalDateTime pushedAt,
         LocalDateTime createdAt) {
