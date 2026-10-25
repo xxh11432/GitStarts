@@ -22,6 +22,7 @@ public class Repository {
     private Integer forks;
     private Integer watchers;
     private Integer openIssues;
+    private Integer heatScore;
     private String topics;
     private String category;
     private String platform;
@@ -100,6 +101,14 @@ public class Repository {
 
     public void setLicense(String license) {
         this.license = license;
+    }
+
+    public Integer getHeatScore() {
+        return heatScore;
+    }
+
+    public void setHeatScore(Integer heatScore) {
+        this.heatScore = heatScore;
     }
 
     public Integer getStars() {

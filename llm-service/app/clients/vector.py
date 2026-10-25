@@ -130,7 +130,10 @@ class VectorStore:
                 vectors_config=models.VectorParams(
                     size=self._settings.llm_embedding_dim,
                     distance=models.Distance.COSINE,
+                    # 低内存部署：向量落盘（mmap），避免集合常驻内存随规模增长
+                    on_disk=self._settings.qdrant_on_disk,
                 ),
+                hnsw_config=models.HnswConfigDiff(on_disk=self._settings.qdrant_on_disk),
             )
             created = True
             logger.info("collection_created", collection=self.collection)

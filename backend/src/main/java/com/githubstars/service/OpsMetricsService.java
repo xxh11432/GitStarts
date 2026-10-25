@@ -31,9 +31,13 @@ public class OpsMetricsService {
     private static final Set<String> STATUSES = Set.of("ok", "error", "timeout", "cancelled");
     private static final int MAX_DAYS = 90;
 
+    private static final int PURGE_BATCH_SIZE = 10_000;
+    private static final int PURGE_MAX_BATCHES = 20;
+
     private final AiMetricMapper mapper;
     private final long dailyTokenBudget;
     private final long dailyCompareBudget;
+    private final int retentionDays;
     private final Map<String, Long> p95Thresholds;
 
     public OpsMetricsService(
@@ -42,10 +46,12 @@ public class OpsMetricsService {
             @Value("${app.ops.daily-compare-budget:200}") long dailyCompareBudget,
             @Value("${app.ops.p95-chat-ms:30000}") long p95ChatMs,
             @Value("${app.ops.p95-match-ms:30000}") long p95MatchMs,
-            @Value("${app.ops.p95-compare-ms:180000}") long p95CompareMs) {
+            @Value("${app.ops.p95-compare-ms:180000}") long p95CompareMs,
+            @Value("${app.ops.retention-days:180}") int retentionDays) {
         this.mapper = mapper;
         this.dailyTokenBudget = dailyTokenBudget;
         this.dailyCompareBudget = dailyCompareBudget;
+        this.retentionDays = retentionDays;
         this.p95Thresholds = Map.of("chat", p95ChatMs, "match", p95MatchMs, "compare", p95CompareMs);
     }
 
@@ -168,6 +174,32 @@ public class OpsMetricsService {
                         p95Thresholds.get("chat"), p95Thresholds.get("match"),
                         p95Thresholds.get("compare")),
                 alerts);
+    }
+
+    /**
+     * 每天分批清理超过保留期的指标；0 表示关闭自动清理（由运维手工维护）。
+     */
+    @Scheduled(initialDelay = 5 * 60_000, fixedDelay = 24 * 3_600_000)
+    public void purgeOldMetrics() {
+        if (retentionDays <= 0) {
+            return;
+        }
+        LocalDateTime cutoff = LocalDateTime.now(ZONE).minusDays(retentionDays);
+        int total = 0;
+        try {
+            for (int batch = 0; batch < PURGE_MAX_BATCHES; batch++) {
+                int deleted = mapper.deleteOlderThan(cutoff);
+                total += deleted;
+                if (deleted < PURGE_BATCH_SIZE) {
+                    break;
+                }
+            }
+            if (total > 0) {
+                log.info("ai_metrics_purged cutoff={} deleted={}", cutoff, total);
+            }
+        } catch (Exception e) {
+            log.warn("ai_metrics_purge_failed", e);
+        }
     }
 
     /**

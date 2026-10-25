@@ -11,7 +11,9 @@ from worker.chunk import Chunk
 
 logger = structlog.get_logger("embed")
 
-_MAX_CACHE = 8192
+# 1024 维向量以 Python float 列表缓存约 32 MB 上限；增量轮次重复内容很少，
+# 把上限从 8192 收紧，避免全量重建时 worker 常驻内存持续上涨。
+_MAX_CACHE = 1024
 
 
 class EmbeddingCache:

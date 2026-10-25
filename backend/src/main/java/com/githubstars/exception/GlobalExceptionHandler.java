@@ -1,5 +1,7 @@
 package com.githubstars.exception;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -11,6 +13,9 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String GENERIC_ERROR = "服务内部错误，请稍后重试";
 
     @ExceptionHandler(RepoNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(RepoNotFoundException e) {
@@ -44,7 +49,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception e) {
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+        // 兜底异常只记日志，对外统一文案：避免把 SQL / JDBC / 内部实现细节返回给客户端
+        log.error("未处理异常", e);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, GENERIC_ERROR);
     }
 
     private ResponseEntity<Map<String, Object>> build(HttpStatus status, String message) {

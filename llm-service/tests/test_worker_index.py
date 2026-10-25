@@ -161,6 +161,7 @@ async def test_full_pass_resumes_from_cursor(settings: Settings) -> None:
     backend = FakeIndexBackend(pages)
     cache = FakeCache()
     capped = settings.model_copy(update={"index_max_repos": 1})
+    full_cursor = f"{FULL_CURSOR_KEY}:{capped.qdrant_collection}"
 
     first = await run_index_pass(
         capped,
@@ -172,7 +173,7 @@ async def test_full_pass_resumes_from_cursor(settings: Settings) -> None:
         full=True,
     )
     assert first.processed == 1
-    assert cache.values[FULL_CURSOR_KEY] == "1"
+    assert cache.values[full_cursor] == "1"
 
     await run_index_pass(
         capped,
@@ -183,7 +184,7 @@ async def test_full_pass_resumes_from_cursor(settings: Settings) -> None:
         cache=cache,  # type: ignore[arg-type]
         full=True,
     )
-    assert cache.values[FULL_CURSOR_KEY] == "2"
+    assert cache.values[full_cursor] == "2"
     assert backend.cursors == [0, 1]
 
     await run_index_pass(
@@ -195,5 +196,5 @@ async def test_full_pass_resumes_from_cursor(settings: Settings) -> None:
         cache=cache,  # type: ignore[arg-type]
         full=True,
     )
-    assert FULL_CURSOR_KEY not in cache.values
+    assert full_cursor not in cache.values
     assert backend.cursors == [0, 1, 2, 3]

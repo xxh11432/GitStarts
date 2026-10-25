@@ -16,6 +16,7 @@ const LIMIT = 30;
 
 const TABS = [
   { key: 'total', label: '总星标榜', hint: '按累计 Star 数排序，观察长期价值项目。' },
+  { key: 'active', label: '活跃综合榜', hint: '按活跃度评分排序：高 Star 且近期仍在推送的项目优先。' },
   { key: 'weekly', label: '本周活跃榜', hint: '近 7 天仍有代码推送的高 Star 项目。' },
   { key: 'monthly', label: '本月活跃榜', hint: '近 30 天仍在持续迭代的热门项目。' },
   { key: 'new', label: '新晋榜', hint: '按创建时间排序，发现刚出现的项目。' },

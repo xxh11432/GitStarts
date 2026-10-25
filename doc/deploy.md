@@ -7,21 +7,23 @@
 - Docker Engine 24+ 与 Docker Compose v2
 - 可访问 GitHub API、模型供应商、npm / Maven / PyPI（构建期）
 - 一个已备案域名（生产）与 TLS 证书；GitHub OAuth App 的管理权限
-- 至少 4 GB 内存（fastembed 首次会下载 embedding 模型到 `model-cache` 卷）
+- 2 GB 内存可运行（embedding 走硅基流动 API，本地不加载模型）；若切回 `EMBEDDING_PROVIDER=fastembed` 建议 4 GB
 
 ## 2. 首次部署
 
 ```bash
 cp .env.example .env
 # 必填：MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / REDIS_PASSWORD / GITHUB_TOKEN /
-#       LLM_API_KEY / AUTH_GITHUB_CLIENT_ID / AUTH_GITHUB_CLIENT_SECRET / INTERNAL_TOKEN
+#       LLM_API_KEY（对话）/ EMBEDDING_API_KEY（硅基流动，embedding）/
+#       AUTH_GITHUB_CLIENT_ID / AUTH_GITHUB_CLIENT_SECRET / INTERNAL_TOKEN
 # INTERNAL_TOKEN 建议：openssl rand -hex 32
 docker compose up -d --build
 docker compose ps
 ```
 
-启动顺序由 compose 健康检查保证：MySQL/Redis → backend → llm-service / ingest-worker / frontend → Nginx。
-MySQL 首次启动会自动执行 `deploy/init.sql`。
+启动顺序由 compose 健康检查保证：MySQL/Redis → backend → frontend / llm-service / ingest-worker → Nginx。
+backend 的 `/api/health` 会同时探测 MySQL 与 Redis，任一不可用时容器保持 unhealthy，Nginx 不会接流量。
+MySQL 首次启动会自动执行 `deploy/init.sql`（库名由 `MYSQL_DATABASE` 决定，脚本内不再硬编码）。
 
 ### 2.1 GitHub OAuth
 
@@ -40,7 +42,14 @@ MySQL 首次启动会自动执行 `deploy/init.sql`。
 ### 2.2 HTTPS
 
 生产必须走 HTTPS，否则 `SESSION_COOKIE_SECURE=true` 的会话 Cookie 不会被浏览器发送。
-用 [nginx-https.conf.example](../deploy/nginx-https.conf.example) 整体替换 `nginx/nginx.conf`：80 端口 301 到 443，TLS 1.2/1.3，HSTS 一年，保留内部接口隔离与 SSE 配置。
+用 [nginx-https.conf.example](../deploy/nginx-https.conf.example) 整体替换 `nginx/nginx.conf`：80 端口 301 到 443，TLS 1.2/1.3，HSTS 一年，保留内部接口隔离、SSE 配置与按 IP 限流。
+
+`APP_FRONTEND_URL` 为 `https://` 时，backend 启动期会强制校验：
+
+- `SESSION_COOKIE_SECURE` 必须为 `true`；
+- `MYSQL_PASSWORD` / `REDIS_PASSWORD` 不能仍是 `.env.example` 里的示例值。
+
+任一不满足会直接启动失败，避免“HTTPS 站点 + 明文 Cookie”或示例口令被带上线。
 
 compose 的 `nginx` 服务需要：
 
@@ -66,6 +75,10 @@ docker compose logs -f ingest-worker
 # 索引完成后可在 /repos 页面搜索，或查看 worker 日志中的 index_run_finished / indexed 计数
 ```
 
+> worker 默认 `GITHUB_REQUESTS_PER_MINUTE=60`（与 backend 共享同一 Token 配额）。
+> 2000 个仓库的 README + manifest 首建通常需要 60–100 分钟，这是刻意的限速，避免打满 GitHub 配额；
+> worker 的 Redis 锁 TTL 为 4 小时，即使首建较慢也不会被下一轮重入。
+
 ## 3. 升级
 
 ```bash
@@ -82,6 +95,7 @@ docker compose up -d
   docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < deploy/init.sql
   ```
 - M7 起新增 `ai_metrics` 表；不重跑脚本时 `/ops` 会 500，其余功能不受影响。
+- 新增 `repositories.heat_score` 列与 `idx_heat_score` 索引；不重跑脚本时活跃度排序不可用，启动日志会记录评分回填失败。
 
 ## 4. 生产上线检查表
 
@@ -91,9 +105,11 @@ docker compose up -d
 - [ ] `GITHUB_ALLOWED_HOSTS` 仅包含实际使用的 GitHub API 主机
 - [ ] `CORS`/前端域名与 `APP_FRONTEND_URL` 一致
 - [ ] OAuth 回调地址与 GitHub App 完全一致
-- [ ] Nginx 响应头含 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`
+- [ ] Nginx 响应头含 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` / `Content-Security-Policy`
+- [ ] Nginx 限流生效：高频请求 `/ai/`、`/api/`、README 摘要返回 429
+- [ ] Redis 已开启 AOF（`redis-cli -a "$REDIS_PASSWORD" INFO persistence | grep aof_enabled`）
 - [ ] `/_next/image` 返回 404（全站不使用 next/image，已关闭优化器）
-- [ ] `docker compose ps` 全部 healthy；`/ai/health` 返回 200
+- [ ] `docker compose ps` 全部 healthy；`/api/health` 与 `/ai/health` 返回 200
 - [ ] 首页、登录、匹配、对比各跑一次真实请求
 - [ ] `/ops` 能看到当天请求与 token；预算阈值已按实际预算调整
 

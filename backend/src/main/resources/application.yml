@@ -11,6 +11,8 @@ server:
         # 本地 HTTP 调试为 false；生产 HTTPS 环境务必设为 true
         secure: ${SESSION_COOKIE_SECURE:false}
         path: /
+  # 信任 Nginx 透传的 X-Forwarded-Proto / X-Forwarded-For，保证 HTTPS 判定与 secure Cookie 正确
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -20,11 +22,17 @@ spring:
     username: githubstars
     password: githubstarspass
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 健康检查需要快速失败，避免连接池耗尽时 /health 长时间挂起
+      connection-timeout: 3000
+      validation-timeout: 1000
   data:
     redis:
       host: localhost
       port: 6379
       password: redispass
+      timeout: 2s
+      connect-timeout: 2s
   session:
     store-type: redis
     timeout: ${SESSION_TTL:7d}
@@ -64,8 +72,17 @@ github:
   api-base: https://api.github.com
   token: ${GITHUB_TOKEN:}
   sync-enabled: ${SYNC_ENABLED:true}
+  # 分层发现：Search API 单查询最多 1000 条，总量靠多趟查询 + full_name 去重达到目标
+  sync:
+    max-repos: ${SYNC_MAX_REPOS:2000}
+    incremental-batch: ${SYNC_INCREMENTAL_BATCH:200}
+    active-days: ${SYNC_ACTIVE_DAYS:90}
+    language-batch: ${SYNC_LANGUAGE_BATCH:100}
+    release-refresh-daily: ${SYNC_RELEASE_REFRESH:2000}
 
 app:
+  # 部署环境：production 下启用启动期安全自检
+  environment: ${ENVIRONMENT:production}
   # 登录成功后回跳的前端地址（Nginx 入口）
   frontend-url: ${APP_FRONTEND_URL:http://localhost}
   # 服务间内部接口鉴权；为空时内部接口拒绝全部请求（fail closed）
@@ -81,6 +98,8 @@ app:
     p95-chat-ms: ${OPS_P95_CHAT_MS:30000}
     p95-match-ms: ${OPS_P95_MATCH_MS:30000}
     p95-compare-ms: ${OPS_P95_COMPARE_MS:180000}
+    # ai_metrics 保留天数；0 表示不自动清理
+    retention-days: ${OPS_METRICS_RETENTION_DAYS:180}
 
 logging:
   level:

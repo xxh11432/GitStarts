@@ -27,12 +27,13 @@ class Settings(BaseSettings):
     # 导致正文为空；auto 表示不传该参数，交由供应商默认行为。
     llm_thinking_mode: Literal["auto", "enabled", "disabled"] = "disabled"
 
-    # Embedding: local fastembed by default, or provider API.
-    # NOTE: fastembed does not ship an ONNX build of BAAI/bge-m3, so the local
-    # default is the supported 1024-dim multilingual model. Switch to "api"
-    # (and set LLM_EMBEDDING_MODEL=BAAI/bge-m3) when bge-m3 is required.
-    embedding_provider: Literal["fastembed", "api"] = "fastembed"
-    llm_embedding_model: str = "intfloat/multilingual-e5-large"
+    # Embedding：默认调用硅基流动（SiliconFlow）的 OpenAI 兼容接口，
+    # 进程内不加载本地模型，容器常驻内存约 100 MB。
+    # fastembed 仅作为离线备用；embedding_base_url/api_key 为空时回落到 LLM_* 配置。
+    embedding_provider: Literal["fastembed", "api"] = "api"
+    embedding_base_url: str = "https://api.siliconflow.cn/v1"
+    embedding_api_key: str = ""
+    llm_embedding_model: str = "BAAI/bge-m3"
     llm_embedding_dim: int = 1024
     fastembed_cache: str = "/models"
 
@@ -68,10 +69,14 @@ class Settings(BaseSettings):
     github_timeout_seconds: float = 20.0
     github_max_retries: int = 3
     github_backoff_seconds: float = 1.0
+    # Worker 与 backend 共享同一 Token 配额：限速给采集与业务检索留余量（0 表示不限速）
+    github_requests_per_minute: int = 60
 
     # Semantic index (M4)
     qdrant_collection: str = "repo_chunks"
-    embedding_batch_size: int = 32
+    # 低内存部署：向量与 HNSW 落盘，避免集合常驻内存随仓库数增长
+    qdrant_on_disk: bool = True
+    embedding_batch_size: int = 16
     index_page_size: int = 100
     index_chunk_target_tokens: int = 600
     index_chunk_min_tokens: int = 400

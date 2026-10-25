@@ -10,6 +10,7 @@ import com.githubstars.mapper.SyncLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
@@ -31,16 +32,36 @@ public class SyncService {
 
     private static final String LOCK_PREFIX = "sync:lock:";
     private static final int PAGE_SIZE = 100;
-    private static final int DEFAULT_MAX_REPOS = 1000;
-    private static final int INCREMENTAL_BATCH = 100;
+    private static final int PER_QUERY_CAP = 1000;
     private static final int PLATFORM_BACKFILL_BATCH = 500;
     private static final int RELEASE_BATCH = 50;
     private static final int RELEASE_REFRESH_DAYS = 30;
     private static final Pattern REPO_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_.-]+$");
 
+    // 分层采集门槛：高星基石 / 高活跃主力 / 近期热点 / 语言补齐
+    private static final int TIER_STARS_PRIMARY = 5000;
+    private static final int TIER_STARS_ACTIVE = 1000;
+    private static final int TIER_STARS_RECENT = 300;
+    private static final int TIER_STARS_LANGUAGE = 300;
+
     private static final List<String> TOP_LANGUAGES = List.of(
             "Java", "JavaScript", "TypeScript", "Python", "Go", "Rust", "C++", "C",
             "C#", "PHP", "Ruby", "Swift", "Kotlin", "Scala", "Dart", "Shell", "HTML", "CSS");
+
+    @Value("${github.sync.max-repos:2000}")
+    private int maxRepos;
+
+    @Value("${github.sync.incremental-batch:200}")
+    private int incrementalBatch;
+
+    @Value("${github.sync.active-days:90}")
+    private int activeDays;
+
+    @Value("${github.sync.language-batch:100}")
+    private int languageBatch;
+
+    @Value("${github.sync.release-refresh-daily:2000}")
+    private int releaseRefreshDaily;
 
     private final GithubClient githubClient;
     private final RepositoryMapper repositoryMapper;
@@ -74,6 +95,25 @@ public class SyncService {
         return count == null ? 0 : count;
     }
 
+    public int targetRepoCount() {
+        return maxRepos;
+    }
+
+    public int releaseRefreshBudget() {
+        return releaseRefreshDaily;
+    }
+
+    /**
+     * 回填历史仓库的活跃度评分（启动时执行，公式见 ActivityScore）。
+     */
+    public int backfillHeatScores() {
+        int updated = repositoryMapper.backfillHeatScores();
+        if (updated > 0) {
+            log.info("活跃度评分回填完成，更新 {} 个仓库", updated);
+        }
+        return updated;
+    }
+
     /**
      * 为 M2 之前入库的仓库补算平台。启动时执行一次，按 id 游标分批处理直到没有缺失行。
      */
@@ -93,6 +133,7 @@ public class SyncService {
                 repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
                 repo.setPlatforms(String.join(",", platformResolver.resolveAll(
                         repo.getDescription(), repo.getTopics(), repo.getLanguage())));
+                repo.setHeatScore(ActivityScore.score(repo.getStars(), repo.getPushedAt()));
                 repositoryMapper.updateById(repo);
                 cursor = repo.getId();
                 updated++;
@@ -104,47 +145,44 @@ public class SyncService {
         return updated;
     }
 
-    public void fullSync() {
-        fullSync(DEFAULT_MAX_REPOS);
-    }
-
-    public void fullSync(int maxRepos) {
-        if (!tryLock("full")) {
-            log.info("已有实例在执行 full_sync，跳过");
-            return;
+    /**
+     * 分层发现：单条 Search 查询最多 1000 条，按「高星 → 近期活跃 → 近期热点 → 语言补齐」
+     * 多趟拉取，依赖 full_name 唯一键去重，直到仓库总量达到 github.sync.max-repos。
+     */
+    public int discoverySync() {
+        if (!tryLock("discovery")) {
+            log.info("已有实例在执行 discovery_sync，跳过");
+            return 0;
         }
-        SyncLog syncLog = startLog("full_sync");
+        SyncLog syncLog = startLog("discovery");
         SyncStats stats = new SyncStats();
         try {
-            fetchByQuery("stars:>=100", maxRepos, stats);
-            finishLog(syncLog, "success", stats, null);
-        } catch (Exception e) {
-            log.error("full_sync 执行失败", e);
-            finishLog(syncLog, "failed", stats, e.getMessage());
-        } finally {
-            unlock("full");
-        }
-    }
-
-    public void languageSync() {
-        if (!tryLock("language")) {
-            log.info("已有实例在执行 language_sync，跳过");
-            return;
-        }
-        SyncLog syncLog = startLog("language");
-        SyncStats stats = new SyncStats();
-        try {
-            int perLanguage = 100;
+            LocalDateTime now = LocalDateTime.now();
+            collectTier("stars:>=" + TIER_STARS_PRIMARY + " archived:false",
+                    "stars", "desc", PER_QUERY_CAP, stats);
+            collectTier("stars:>=" + TIER_STARS_ACTIVE + " pushed:>=" + dateFrom(now.minusDays(activeDays))
+                            + " archived:false",
+                    "updated", "desc", PER_QUERY_CAP, stats);
+            collectTier("stars:>=" + TIER_STARS_RECENT + " pushed:>=" + dateFrom(now.minusDays(30))
+                            + " archived:false",
+                    "stars", "desc", 500, stats);
             for (String language : TOP_LANGUAGES) {
-                fetchByQuery("language:" + language + " stars:>=100", perLanguage, stats);
+                if (remaining() <= 0) {
+                    break;
+                }
+                collectTier("language:" + language + " stars:>=" + TIER_STARS_LANGUAGE
+                                + " pushed:>=" + dateFrom(now.minusDays(180)) + " archived:false",
+                        "stars", "desc", languageBatch, stats);
             }
             finishLog(syncLog, "success", stats, null);
+            log.info("discovery_sync 完成，当前仓库 {} / 目标 {}", countRepos(), maxRepos);
         } catch (Exception e) {
-            log.error("language_sync 执行失败", e);
+            log.error("discovery_sync 执行失败", e);
             finishLog(syncLog, "failed", stats, e.getMessage());
         } finally {
-            unlock("language");
+            unlock("discovery");
         }
+        return stats.total;
     }
 
     public void incrementalSync() {
@@ -157,7 +195,7 @@ public class SyncService {
         try {
             List<Repository> repos = repositoryMapper.selectList(new LambdaQueryWrapper<Repository>()
                     .orderByAsc(Repository::getSyncedAt)
-                    .last("LIMIT " + INCREMENTAL_BATCH));
+                    .last("LIMIT " + incrementalBatch));
             stats.total = repos.size();
 
             List<Future<Boolean>> futures = new ArrayList<>();
@@ -185,14 +223,24 @@ public class SyncService {
         }
     }
 
-    private void fetchByQuery(String query, int maxRepos, SyncStats stats) {
+    /**
+     * 拉取一层查询并入库；每页开始前按 MySQL 实际总量与目标差额判断是否继续，
+     * 单层搜索失败只跳过该层，不影响后续分层。
+     */
+    private void collectTier(String query, String sort, String order, int tierCap, SyncStats stats) {
+        int fetched = 0;
         int page = 1;
-        while (stats.total < maxRepos) {
+        while (fetched < tierCap) {
+            // 只按「新增」消耗配额：命中已存在仓库时 upsert 只更新，不占用目标名额
+            int room = remaining();
+            if (room <= 0) {
+                return;
+            }
             JsonNode result;
             try {
-                result = githubClient.searchRepositories(query, "stars", "desc", page, PAGE_SIZE);
+                result = githubClient.searchRepositories(query, sort, order, page, PAGE_SIZE);
             } catch (Exception e) {
-                log.warn("搜索第 {} 页失败：{}", page, e.getMessage());
+                log.warn("分层查询失败（query={}，page={}）：{}", query, page, e.getMessage());
                 stats.failed++;
                 return;
             }
@@ -202,10 +250,18 @@ public class SyncService {
             }
             List<Repository> pageRepos = new ArrayList<>();
             for (JsonNode item : items) {
+                if (fetched >= tierCap) {
+                    break;
+                }
+                fetched++;
                 stats.total++;
                 try {
                     Repository repo = mapRepo(item);
-                    repo.setId(upsert(repo));
+                    Upsert upsert = upsert(repo);
+                    repo.setId(upsert.id());
+                    if (upsert.inserted()) {
+                        room--;
+                    }
                     pageRepos.add(repo);
                     tagService.syncTags(repo);
                     stats.succeeded++;
@@ -213,13 +269,24 @@ public class SyncService {
                     log.warn("处理仓库失败：{}", item.path("full_name").asText(""), e);
                     stats.failed++;
                 }
+                if (room <= 0) {
+                    break;
+                }
             }
             refreshReleasesFor(pageRepos);
-            if (items.size() < PAGE_SIZE) {
+            if (items.size() < PAGE_SIZE || fetched >= tierCap || room <= 0) {
                 return;
             }
             page++;
         }
+    }
+
+    private int remaining() {
+        return (int) Math.max(0, maxRepos - countRepos());
+    }
+
+    private String dateFrom(LocalDateTime time) {
+        return time.toLocalDate().toString();
     }
 
     private boolean updateRepoStats(Repository repo) {
@@ -231,6 +298,7 @@ public class SyncService {
             repo.setOpenIssues(node.path("open_issues_count").asInt(repo.getOpenIssues()));
             repo.setPushedAt(parseDate(node.path("pushed_at")));
             repo.setArchived(node.path("archived").asBoolean(false) ? 1 : 0);
+            repo.setHeatScore(ActivityScore.score(repo.getStars(), repo.getPushedAt()));
             repo.setSyncedAt(LocalDateTime.now());
             repositoryMapper.updateById(repo);
             return true;
@@ -240,16 +308,16 @@ public class SyncService {
         }
     }
 
-    private Long upsert(Repository repo) {
+    private Upsert upsert(Repository repo) {
         Repository existing = repositoryMapper.selectOne(
                 new LambdaQueryWrapper<Repository>().eq(Repository::getFullName, repo.getFullName()));
         if (existing == null) {
             repositoryMapper.insert(repo);
-        } else {
-            repo.setId(existing.getId());
-            repositoryMapper.updateById(repo);
+            return new Upsert(repo.getId(), true);
         }
-        return repo.getId();
+        repo.setId(existing.getId());
+        repositoryMapper.updateById(repo);
+        return new Upsert(repo.getId(), false);
     }
 
     private Repository mapRepo(JsonNode item) {
@@ -279,6 +347,7 @@ public class SyncService {
         repo.setPlatform(platformResolver.resolve(repo.getDescription(), repo.getTopics(), repo.getLanguage()));
         repo.setPlatforms(String.join(",", platformResolver.resolveAll(
                 repo.getDescription(), repo.getTopics(), repo.getLanguage())));
+        repo.setHeatScore(ActivityScore.score(repo.getStars(), repo.getPushedAt()));
         repo.setSyncedAt(LocalDateTime.now());
         return repo;
     }
@@ -431,6 +500,9 @@ public class SyncService {
 
     private void unlock(String job) {
         redisTemplate.delete(LOCK_PREFIX + job);
+    }
+
+    private record Upsert(Long id, boolean inserted) {
     }
 
     private static class SyncStats {

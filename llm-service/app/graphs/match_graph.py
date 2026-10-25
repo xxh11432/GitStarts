@@ -744,6 +744,13 @@ class MatchRunner:
     def tokens_out(self) -> int:
         return self._usage.tokens_out
 
+    async def peek_cache(self, request: MatchRequest, *, user_id: int) -> dict[str, Any] | None:
+        """只读缓存探测：供路由在扣减配额前判断是否能直接回放。"""
+        if self._cache is None:
+            return None
+        limit = request.limit or self._settings.match_limit_default
+        return await self._cache.get_json(self._cache_key(request, user_id, limit))
+
     async def run(self, request: MatchRequest, *, user_id: int) -> AsyncIterator[MatchEvent]:
         started = time.perf_counter()
         limit = request.limit or self._settings.match_limit_default

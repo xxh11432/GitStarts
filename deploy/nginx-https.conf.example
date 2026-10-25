@@ -15,6 +15,19 @@ http {
     default_type  application/octet-stream;
     sendfile      on;
     keepalive_timeout 65;
+    server_tokens off;
+
+    # 按来源 IP 限流：防止公开接口被刷、避免 README 抓取打满 GitHub 配额
+    limit_req_zone $binary_remote_addr zone=api_zone:10m rate=20r/s;
+    limit_req_zone $binary_remote_addr zone=readme_zone:10m rate=1r/s;
+    limit_req_zone $binary_remote_addr zone=ai_zone:10m rate=3r/s;
+    limit_req_zone $binary_remote_addr zone=login_zone:10m rate=1r/s;
+    limit_conn_zone $binary_remote_addr zone=per_ip:10m;
+    limit_req_status 429;
+    limit_conn_status 429;
+    limit_req_log_level warn;
+
+    client_max_body_size 2m;
 
     gzip on;
     gzip_vary on;
@@ -52,13 +65,14 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 1d;
 
+        limit_conn per_ip 50;
+
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         add_header X-Content-Type-Options nosniff always;
         add_header Referrer-Policy strict-origin-when-cross-origin always;
         add_header X-Frame-Options DENY always;
         add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
-
-        client_max_body_size 2m;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 
         # 未使用 next/image：关闭优化器
         location = /_next/image {
@@ -87,10 +101,33 @@ http {
             proxy_set_header Content-Length "";
             proxy_set_header Cookie $http_cookie;
             proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Request-Id $request_id;
+        }
+
+        location = /api/auth/github/login {
+            limit_req zone=login_zone burst=5 nodelay;
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Request-Id $request_id;
+        }
+
+        # README 摘要会实时调用 GitHub，单独收紧到 1r/s
+        location ~ ^/api/repos/[^/]+/[^/]+/readme$ {
+            limit_req zone=readme_zone burst=3 nodelay;
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Request-Id $request_id;
         }
 
         location /api/ {
+            limit_req zone=api_zone burst=40 nodelay;
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -108,6 +145,7 @@ http {
 
         # SSE：关闭缓冲与压缩，read timeout 覆盖对比最长耗时
         location /ai/ {
+            limit_req zone=ai_zone burst=6 nodelay;
             auth_request /api/internal/auth/session;
             auth_request_set $auth_user_id $upstream_http_x_user_id;
             error_page 401 = @ai_unauthorized;

@@ -6,7 +6,7 @@
 
 | 服务 | 职责 | 关键日志 |
 | --- | --- | --- |
-| `nginx` | TLS / 限流入口、内部接口隔离 | `access.log`、`error.log` |
+| `nginx` | TLS / 按 IP 限流（`/api/`、`/ai/`、README、登录）、内部接口隔离 | `access.log`、`error.log` |
 | `frontend` | Next.js 页面与 RSC | 容器 stdout |
 | `backend` | 业务 API、配额、内部接口 | `requestId`、`quota_*`、`ops_budget_alert` |
 | `llm-service` | SSE、Graph、模型调用 | `chat_*` / `match_*` / `compare_*`、`metric_report_failed` |
@@ -48,8 +48,11 @@ docker compose logs backend | grep ops_budget_alert
 
 ### 2.1 数据保留
 
+backend 每天自动分批清理超过 `OPS_METRICS_RETENTION_DAYS`（默认 180 天）的 `ai_metrics`；
+设为 `0` 可关闭自动清理，改用下面的手工 SQL：
+
 ```sql
--- 建议保留 180 天；分批删除，避免长事务
+-- 注意：开启自动清理时无需再手工执行
 DELETE FROM ai_metrics WHERE created_at < NOW() - INTERVAL 180 DAY LIMIT 10000;
 ```
 
@@ -98,17 +101,17 @@ uvx pip-audit -r req.txt
 脚本：`deploy/loadtest/sse_load.py`（仅标准库）。
 
 ```bash
-# 对话 SSE：先取登录 Cookie 与 XSRF-TOKEN（浏览器 DevTools → Application → Cookies）
+# 对话 SSE：先取登录 Cookie（浏览器 DevTools → Application → Cookies）；/ai/** 不需要 CSRF
 python deploy/loadtest/sse_load.py sse \
-  --url http://localhost/api/ai/chat \
-  --cookie "GS_SESSION=<值>" --csrf "<XSRF-TOKEN>" \
-  --body '{"conversationId":null,"message":"推荐一个轻量级任务队列"}' \
+  --url http://localhost/ai/chat/stream \
+  --cookie "GS_SESSION=<值>" \
+  --body '{"conversationId":null,"messages":[{"role":"user","content":"推荐一个轻量级任务队列"}]}' \
   --concurrency 10 --requests 20
 
 # 对比 SSE：{{uuid}} 保证每次都是新 cacheKey，可同时观察配额扣减
 python deploy/loadtest/sse_load.py sse \
-  --url http://localhost/api/ai/compare \
-  --cookie "GS_SESSION=<值>" --csrf "<XSRF-TOKEN>" \
+  --url http://localhost/ai/compare \
+  --cookie "GS_SESSION=<值>" \
   --body @compare.json --concurrency 2 --requests 10
 
 # Qdrant 检索：直接打 points/search，绕过 embedding 与模型成本
@@ -116,6 +119,9 @@ python deploy/loadtest/sse_load.py qdrant \
   --url http://localhost:6333 --collection repo_chunks --dim 1024 \
   --concurrency 20 --requests 200
 ```
+
+> Nginx 默认对单 IP 限流（`/ai/` 3r/s、`/api/` 20r/s、README 1r/s）。
+> 高并发压测请在预发布环境临时调高对应 `limit_req`，否则 429 会被计入错误率。
 
 判定标准（M7）：
 
@@ -145,7 +151,7 @@ qdrant: req/s=  err=   p50=   p95=
 docker compose exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" \
   --single-transaction "$MYSQL_DATABASE" | gzip > backup-$(date +%F).sql.gz
 
-# Redis：配额与 checkpoint，AOF 开启；Qdrant 快照
+# Redis：配额与 checkpoint，Compose 已开启 AOF（appendonly yes + everysec）；Qdrant 快照
 docker compose exec redis redis-cli -a "$REDIS_PASSWORD" BGSAVE
 docker compose exec qdrant curl -s -X POST http://localhost:6333/snapshots
 ```

@@ -21,8 +21,17 @@ CURSOR_KEY = "index:cursor"
 FULL_CURSOR_KEY = "index:full_cursor"
 LOCK_KEY = "index:lock"
 INITIALIZED_KEY = "index:initialized"
-LOCK_TTL_SECONDS = 2 * 60 * 60
+LOCK_TTL_SECONDS = 4 * 60 * 60
 MANIFEST_MARKER_TTL_SECONDS = 90 * 24 * 3600
+
+
+def _collection_key(settings: Settings, prefix: str) -> str:
+    return f"{prefix}:{settings.qdrant_collection}"
+
+
+def initialized_key(settings: Settings) -> str:
+    """按集合名隔离初始化标记：更换 embedding 模型并切到新集合后自动全量重建。"""
+    return _collection_key(settings, INITIALIZED_KEY)
 
 
 @dataclass
@@ -70,7 +79,8 @@ async def run_index_pass(
 
     try:
         await vector.ensure_collection()
-        cursor_key = FULL_CURSOR_KEY if full else CURSOR_KEY
+        # 游标按集合隔离，避免切换 embedding 模型后从旧集合的断点续跑
+        cursor_key = _collection_key(settings, FULL_CURSOR_KEY if full else CURSOR_KEY)
         saved_cursor = await cache.get_text(cursor_key)
         cursor = int(saved_cursor) if saved_cursor else 0
         if full and saved_cursor:
@@ -96,7 +106,7 @@ async def run_index_pass(
 
                 stats.processed += 1
                 needs_readme = full or not item.get("docsIndexedAt") or _needs_index(item)
-                manifest_key = _manifest_key(item)
+                manifest_key = _manifest_key(settings, item)
                 needs_manifest = settings.index_manifests_enabled and not await cache.get_text(
                     manifest_key
                 )
@@ -147,9 +157,9 @@ async def run_index_pass(
             logger.info("index_pass_paused", full=full, **stats.as_dict())
         else:
             if full:
-                await cache.delete(FULL_CURSOR_KEY)
+                await cache.delete(cursor_key)
             else:
-                await cache.set_text(CURSOR_KEY, "0")
+                await cache.set_text(cursor_key, "0")
             logger.info("index_pass_finished", full=full, **stats.as_dict())
         return stats
     finally:
@@ -249,8 +259,12 @@ async def _index_item(
     return "indexed" if changed else "skipped"
 
 
-def _manifest_key(item: dict[str, Any]) -> str:
-    return f"index:manifest:{item.get('repoId')}:{item.get('pushedAt') or 'unknown'}"
+def _manifest_key(settings: Settings, item: dict[str, Any]) -> str:
+    # 按集合隔离：新集合首次全量重建时重新抓取 manifest，保证证据完整
+    return (
+        f"index:manifest:{settings.qdrant_collection}:"
+        f"{item.get('repoId')}:{item.get('pushedAt') or 'unknown'}"
+    )
 
 
 def _repo_payload(item: dict[str, Any]) -> dict[str, Any]:

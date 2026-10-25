@@ -41,6 +41,7 @@ interface CurrentFilters {
 const LICENSES = ['MIT', 'Apache-2.0', 'GPL-3.0', 'AGPL-3.0', 'BSD-3-Clause', 'MPL-2.0'];
 const SORTS = [
   { value: 'stars', label: 'Stars 最多' },
+  { value: 'active', label: '活跃度优先' },
   { value: 'pushedAt', label: '最近更新' },
   { value: 'created', label: '最新创建' },
   { value: 'forks', label: 'Fork 最多' },

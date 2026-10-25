@@ -27,7 +27,7 @@ from app.clients.vector import VectorStore
 from app.core.config import get_settings
 from app.graphs.match_graph import MatchRunner
 from app.schemas.match import MatchRequest
-from app.services.embedding import EmbeddingService
+from app.services.embedding import get_embedding_service
 
 WORKER_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = WORKER_DIR.parent
@@ -85,7 +85,7 @@ async def evaluate(case: EvalCase, limit: int) -> EvalResult:
         settings=settings,
         backend=backend,
         vector=vector,
-        embedding=EmbeddingService(settings),
+        embedding=get_embedding_service(settings),
         llm=build_chat_model(settings),
         cache=cache,
     )
@@ -165,7 +165,7 @@ def render_report(results: list[EvalResult], limit: int, settings: Any, dataset:
         "",
         f"- 生成时间：{datetime.now().astimezone().isoformat(timespec='seconds')}",
         f"- 数据集：`{dataset}`（{len(results)} 条）",
-        f"- 模型：`{settings.llm_model}`；embedding：`{settings.llm_embedding_model}`"
+        f"- 模型：`{settings.llm_chat_model}`；embedding：`{settings.llm_embedding_model}`"
         f"（{settings.embedding_provider}，{settings.llm_embedding_dim} 维）",
         f"- 指标：recall@{limit}（候选命中 / 标注相关仓库）、MRR@{limit}",
         "",

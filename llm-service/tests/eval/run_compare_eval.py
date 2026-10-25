@@ -26,7 +26,7 @@ from app.clients.vector import VectorStore
 from app.core.config import Settings, get_settings
 from app.graphs.compare_graph import CompareError, CompareRunner
 from app.schemas.compare import CompareRequest
-from app.services.embedding import EmbeddingService
+from app.services.embedding import get_embedding_service
 
 LLM_SERVICE_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = LLM_SERVICE_DIR.parent
@@ -92,7 +92,7 @@ async def _run_case(case: CompareCase, settings: Settings, user_id: int) -> Comp
         settings=settings,
         backend=backend,
         vector=vector,
-        embedding=EmbeddingService(settings),
+        embedding=get_embedding_service(settings),
         llm=build_chat_model(settings, max_tokens=settings.compare_llm_max_tokens),
         cache=cache,
     )

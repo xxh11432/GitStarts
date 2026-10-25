@@ -1,8 +1,6 @@
 -- GitHub Stars 聚合站数据库初始化脚本
--- 由 MySQL 容器首次启动时自动执行
-
-CREATE DATABASE IF NOT EXISTS githubstars DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE githubstars;
+-- 由 MySQL 容器首次启动时自动执行；库名由 MYSQL_DATABASE 决定，脚本内不再硬编码
+-- 手工执行时请带上库名，例如：mysql -u... "$MYSQL_DATABASE" < deploy/init.sql
 
 -- 仓库主表
 CREATE TABLE IF NOT EXISTS repositories (
@@ -18,6 +16,7 @@ CREATE TABLE IF NOT EXISTS repositories (
     forks         INT DEFAULT 0,
     watchers      INT DEFAULT 0,
     open_issues   INT DEFAULT 0,
+    heat_score    INT DEFAULT 0 COMMENT '活跃度评分（Star 体量 × 近期推送衰减）',
     topics        JSON COMMENT '标签数组',
     category      VARCHAR(64) COMMENT '分类（由规则推导）',
     platform      VARCHAR(32) COMMENT '主平台（windows/mac/linux/android/ios/harmony/extension/other）',
@@ -37,7 +36,8 @@ CREATE TABLE IF NOT EXISTS repositories (
     INDEX idx_language(language),
     INDEX idx_category(category),
     INDEX idx_platform(platform),
-    INDEX idx_pushed_at(pushed_at)
+    INDEX idx_pushed_at(pushed_at),
+    INDEX idx_heat_score(heat_score)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 标签表
@@ -224,6 +224,27 @@ CALL gs_add_column('repositories', 'latest_release_at',
     'ALTER TABLE repositories ADD COLUMN latest_release_at DATETIME NULL COMMENT ''最新 Release 时间''');
 CALL gs_add_column('repositories', 'release_checked_at',
     'ALTER TABLE repositories ADD COLUMN release_checked_at DATETIME NULL COMMENT ''最近一次检查 Release 的时间''');
+CALL gs_add_column('repositories', 'heat_score',
+    'ALTER TABLE repositories ADD COLUMN heat_score INT DEFAULT 0 COMMENT ''活跃度评分（Star 体量 × 近期推送衰减）''');
+
+DROP PROCEDURE IF EXISTS gs_add_index;
+DELIMITER $$
+CREATE PROCEDURE gs_add_index(IN tbl VARCHAR(64), IN idx VARCHAR(64), IN ddl TEXT)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = tbl AND INDEX_NAME = idx
+    ) THEN
+        SET @ddl = ddl;
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
+DELIMITER ;
+CALL gs_add_index('repositories', 'idx_heat_score',
+    'ALTER TABLE repositories ADD INDEX idx_heat_score(heat_score)');
 
 DROP PROCEDURE IF EXISTS gs_add_column;
+DROP PROCEDURE IF EXISTS gs_add_index;
 

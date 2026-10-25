@@ -3,14 +3,14 @@
 
 示例：
   # 对话 SSE：10 并发 × 20 次，统计首字节与总耗时
-  python sse_load.py sse --url http://localhost/api/ai/chat \
-      --cookie "GS_SESSION=..." --csrf "..." \
-      --body '{"conversationId":null,"message":"推荐一个轻量级任务队列"}' \
+  python sse_load.py sse --url http://localhost/ai/chat/stream \
+      --cookie "GS_SESSION=..." \
+      --body '{"conversationId":null,"messages":[{"role":"user","content":"推荐一个轻量级任务队列"}]}' \
       --concurrency 10 --requests 20
 
   # 对比 SSE（每次替换 {{i}}/{{uuid}}，用于验证配额扣减与 checkpoint）
-  python sse_load.py sse --url http://localhost/api/ai/compare \
-      --cookie "GS_SESSION=..." --csrf "..." \
+  python sse_load.py sse --url http://localhost/ai/compare \
+      --cookie "GS_SESSION=..." \
       --body @compare.json --concurrency 2 --requests 10
 
   # Qdrant 检索（绕过 embedding，直接打 points/search）
@@ -186,9 +186,13 @@ def main() -> None:
     sub = parser.add_subparsers(dest="mode", required=True)
 
     sse = sub.add_parser("sse", help="压测 /ai/chat、/ai/match、/ai/compare 的 SSE 流")
-    sse.add_argument("--url", required=True, help="完整 SSE 地址，如 http://localhost/api/ai/chat")
+    sse.add_argument(
+        "--url",
+        required=True,
+        help="完整 SSE 地址，如 http://localhost/ai/chat/stream、/ai/match、/ai/compare",
+    )
     sse.add_argument("--cookie", required=True, help="登录 Cookie，如 GS_SESSION=...")
-    sse.add_argument("--csrf", default="", help="XSRF-TOKEN 值（POST 需要）")
+    sse.add_argument("--csrf", default="", help="XSRF-TOKEN 值（/ai/** 不需要；仅调试 /api 写接口时用）")
     sse.add_argument("--body", required=True, help="JSON 请求体；支持 @文件名 / {{i}} / {{uuid}}")
     sse.add_argument("--concurrency", type=int, default=2)
     sse.add_argument("--requests", type=int, default=10)

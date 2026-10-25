@@ -66,6 +66,7 @@ public class RankService {
         switch (type) {
             case "weekly" -> wrapper.ge(Repository::getPushedAt, now.minusDays(7)).orderByDesc(Repository::getStars);
             case "monthly" -> wrapper.ge(Repository::getPushedAt, now.minusDays(30)).orderByDesc(Repository::getStars);
+            case "active" -> wrapper.orderByDesc(Repository::getHeatScore).orderByDesc(Repository::getStars);
             case "new" -> wrapper.orderByDesc(Repository::getCreatedAt);
             default -> wrapper.orderByDesc(Repository::getStars);
         }

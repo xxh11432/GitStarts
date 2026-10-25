@@ -75,7 +75,7 @@ fit = 0.45 × 语义相关
 
 **已实现（基线）**
 
-- GitHub 采集：定时全量 / 增量同步、令牌桶限流、Redis 分布式锁、采集日志
+- GitHub 采集：分层发现式全量（高星基石 → 近期活跃 → 近期热点 → 语言补齐，默认目标 2000 个仓库）、定时增量同步、令牌桶限流、Redis 分布式锁、采集日志
 - 查询 API：仓库列表（搜索 / 平台 / 语言 / 分类 / 许可 / 排序 / 分页）、详情、相关推荐、README 摘要、榜单、聚合元数据、健康检查
 - 前端：首页、仓库档案库、仓库详情、语义匹配、深度对比、个人中心（Next.js App Router + Tailwind + shadcn/ui）
 - 部署：Docker Compose 编排 MySQL / Redis / 后端 / 前端 / Nginx
@@ -87,8 +87,9 @@ fit = 0.45 × 语义相关
 - **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → fastembed embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 硬过滤 → 向量召回 + 关键词补充 → LLM 重排 ±0.1 → 四维契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 `recall@10` 报告脚本
 - **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
 - **M6 个性化沉淀**：收藏与备注（`favorites`，跨会话一致）；`/me` 完整化（配额、想法、对比、收藏、会话入口）；对比历史 / 想法 / 会话历史的列表与详情；技能 / 兴趣 / 偏好画像与规则推荐位；对比分享链接可撤销、记录可删除；账号删除时清理全部个人数据
-- **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 关闭图片优化器；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
+- **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 按 IP 限流 / 关闭图片优化器；Redis AOF 与容器健康检查；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
 - **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比前配额预检；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
+- **活跃度采集与排序**：`heat_score`（Star 体量 × 近期推送衰减）随采集更新、启动时回填；`/repos?sort=active`、排行榜「活跃综合榜」与筛选器均支持
 
 **规划中（AI 升级）**
 
@@ -171,13 +172,16 @@ flowchart TB
 git clone https://github.com/xxh11432/GitStarts.git
 cd GitStarts
 cp .env.example .env
-# 编辑 .env：MySQL / Redis 密码，GITHUB_TOKEN（提升 API 限流），LLM_API_KEY（M3 起）
-# INTERNAL_TOKEN 必填：用 `openssl rand -hex 32` 生成后填入；
-# 留空时 backend 内部接口一律 503，AI 对话 / 匹配 / 对比均不可用
+# 编辑 .env：MySQL / Redis 密码，GITHUB_TOKEN（提升 API 限流），LLM_API_KEY（对话）
+# EMBEDDING_API_KEY（硅基流动，用于 embedding）；INTERNAL_TOKEN 必填，用 `openssl rand -hex 32` 生成
+# 留空 INTERNAL_TOKEN 时 backend 内部接口一律 503，AI 对话 / 匹配 / 对比均不可用
 docker compose up -d --build
 ```
 
-镜像构建期不再下载 embedding 模型。容器启动时先检查 `model-cache` 卷（挂载到 `/models`）里是否已有模型：命中则离线加载，缺失才在首次使用时下载（约 2 GB）并持久化到该卷，之后重建或重启容器都不会重复下载。如需把模型直接打进镜像（离线部署），可设 `PREWARM_MODELS=true`。
+embedding 默认调用硅基流动的 `/v1/embeddings`（`BAAI/bge-m3`，1024 维），
+llm-service 与 worker 进程内不再加载 ONNX 模型，两个容器常驻内存合计约 250 MB。
+离线部署需要本地模型时，设 `EMBEDDING_PROVIDER=fastembed` 并显式把模型预置到 `model-cache` 卷。
+更换 embedding 模型必须重建 Qdrant 索引：换成新的 `QDRANT_COLLECTION`，worker 会按集合名自动做一次全量重建。
 
 > 从 M6 升级到 M7 时，已有数据库需补 `ai_metrics` 表（新库由 `deploy/init.sql` 直接创建）：
 > 重跑 `deploy/init.sql` 即可（`CREATE TABLE IF NOT EXISTS`，重复执行无副作用）。
@@ -250,19 +254,25 @@ uv run python -m worker
 |---|---|
 | `GITHUB_TOKEN` | GitHub PAT，用于提升 Search / REST 限流 |
 | `SYNC_ENABLED` | 是否启用定时采集，本地开发可设 `false` |
+| `SYNC_MAX_REPOS` / `SYNC_INCREMENTAL_BATCH` | 仓库总量目标（默认 2000）/ 每小时增量刷新数（默认 200） |
+| `SYNC_ACTIVE_DAYS` / `SYNC_LANGUAGE_BATCH` | 活跃判定天数（默认 90）/ 每种语言补齐上限（默认 100） |
+| `SYNC_RELEASE_REFRESH` | 每日 Release 刷新上限（默认 2000） |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth App 凭据；回调地址填 `http://<host>/api/auth/github/callback` |
 | `AUTH_GITHUB_REDIRECT_URI` / `APP_FRONTEND_URL` | 回调地址与登录成功后的前端回跳地址 |
 | `SESSION_COOKIE_SECURE` | 会话 Cookie 是否仅 HTTPS 发送；生产开启，本地 HTTP 需为 `false` |
 | `QUOTA_CHAT_DAILY` / `QUOTA_COMPARE_DAILY` | 每日对话 / 深度对比额度（默认 30 / 3） |
 | `API_INTERNAL_URL` | 前端 SSR 访问后端的内部地址 |
 | `LLM_BASE_URL` / `LLM_API_KEY` | 模型网关地址与密钥（仅 llm-service 可见） |
-| `LLM_CHAT_MODEL` / `LLM_EMBEDDING_MODEL` | 对话与向量模型（默认 DeepSeek V4 Flash + 1024 维多语言 embedding） |
+| `LLM_CHAT_MODEL` / `LLM_EMBEDDING_MODEL` | 对话与向量模型（默认 DeepSeek V4 Flash 对话 + 硅基流动 `BAAI/bge-m3`） |
 | `LLM_THINKING_MODE` | 思考模式：`auto`（不传参数）/ `enabled` / `disabled`（默认，避免 reasoning 挤占正文） |
-| `EMBEDDING_PROVIDER` | `fastembed`（本地，默认）或 `api` |
-| `PREWARM_MODELS` | 镜像构建期是否内置 embedding 模型（默认 `false`，启动时优先复用 `model-cache` 卷缓存） |
+| `EMBEDDING_PROVIDER` | `api`（默认，硅基流动）或 `fastembed`（本地离线备用） |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` | embedding 供应商地址与密钥，独立于对话供应商；留空时回落到 `LLM_BASE_URL` / `LLM_API_KEY` |
+| `EMBEDDING_BATCH_SIZE` | 单次 embedding 请求文本数（默认 16，受供应商批量上限与限流约束） |
+| `QDRANT_ON_DISK` | 向量/HNSW 是否落盘（默认 `true`，低内存部署必开；仅对新建集合生效） |
+| `PREWARM_MODELS` | 仅 `EMBEDDING_PROVIDER=fastembed` 时使用：镜像构建期内置本地模型（默认 `false`） |
 | `INTERNAL_TOKEN` | 服务间调用鉴权（M0 起） |
 | `BACKEND_URL` | llm-service 访问 backend 内部接口的地址（Compose 内为 `http://backend:8080`） |
-| `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址与集合名（默认 `repo_chunks`） |
+| `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址与集合名（默认 `repo_chunks`；更换 embedding 模型时使用新集合名，如 `repo_chunks_bge_m3`） |
 | `INDEX_ON_STARTUP` / `INDEX_INTERVAL_MINUTES` | worker 首次是否全量、之后增量扫描间隔（分钟） |
 | `INDEX_FULL_REBUILD` / `INDEX_MAX_REPOS` | 强制重扫全部仓库 / 小样本仓库数上限（0 为不限） |
 | `MATCH_RECALL_LIMIT` / `MATCH_RERANK_LIMIT` | 向量召回条数 / LLM 重排候选数（默认 40 / 8） |
@@ -276,6 +286,9 @@ uv run python -m worker
 | `OPS_DAILY_TOKEN_BUDGET` / `OPS_DAILY_COMPARE_BUDGET` | 日 token / 日对比次数预算（默认 200 万 / 200） |
 | `OPS_P95_CHAT_MS` / `OPS_P95_MATCH_MS` / `OPS_P95_COMPARE_MS` | 分类型 P95 延迟告警阈值（默认 30s / 30s / 180s） |
 | `GITHUB_API_BASE` / `GITHUB_ALLOWED_HOSTS` | README / manifest 抓取地址与 SSRF 主机白名单（默认仅 `api.github.com`，强制 HTTPS） |
+| `GITHUB_REQUESTS_PER_MINUTE` | worker 调用 GitHub 的分钟级限速（默认 60，0 为不限）；与 backend 共享同一 Token 配额 |
+| `REDIS_MAXMEMORY` | Redis 内存上限（默认 256mb）；淘汰策略固定 `volatile-lru`，只淘汰带 TTL 的缓存键 |
+| `OPS_METRICS_RETENTION_DAYS` | `ai_metrics` 保留天数（默认 180，0 关闭自动清理） |
 
 ## 目录结构
 
@@ -337,6 +350,7 @@ GitStarts/
 | GET | `/api/favorites` | 我的收藏分页列表（含仓库卡与备注） |
 | POST | `/api/favorites` | 收藏仓库，支持备注（需 CSRF） |
 | GET | `/api/favorites/status?fullName=` | 查询单个仓库是否已收藏 |
+| GET | `/api/favorites/statuses?fullNames=` | 批量查询收藏状态（逗号分隔，最多 50 个） |
 | PATCH | `/api/favorites/{id}` | 修改收藏备注（仅本人，需 CSRF） |
 | DELETE | `/api/favorites/{id}` | 取消收藏（仅本人，需 CSRF） |
 | GET | `/api/profile` | 我的技能 / 兴趣 / 偏好画像 |
@@ -347,7 +361,7 @@ GitStarts/
 | DELETE | `/api/conversations/{id}` | 删除会话与消息（仅本人，需 CSRF） |
 | DELETE | `/api/account` | 删除账号并清理收藏 / 想法 / 对比 / 会话 / 画像 / 用量（需 CSRF） |
 | GET | `/api/ops/metrics?days=7` | 成本看板：日请求数、token、P95 延迟与预算告警（仅 `OPS_GITHUB_LOGINS`，未配置时 403） |
-| GET | `/api/health` | 健康检查 |
+| GET | `/api/health` | 健康检查：MySQL / Redis 任一不可用返回 503（供容器健康检查） |
 | GET | `/ai/health` | AI 网关健康检查（含 Qdrant 连通性，始终 200） |
 | POST | `/ai/chat/stream` | AI 对话 SSE（需登录，`X-User-Id` 由 Nginx 透传）：`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error` |
 | POST | `/ai/match` | 语义匹配 SSE（需登录）：请求 `{ideaId?, rawText?, structured?, limit?}`，事件 `parsed` / `status` / `candidate` / `done` / `error` |
@@ -374,8 +388,10 @@ GitStarts/
 ## 安全与合规
 
 - 模型 Key 只存在 `llm-service` 环境变量，前端与后端均不可见。
-- 会话 Cookie `httpOnly + Secure + SameSite=Lax`，写接口启用 CSRF token。
+- 会话 Cookie `httpOnly + Secure + SameSite=Lax`，写接口启用 CSRF token；HTTPS 站点若关闭 Secure，backend 启动期直接失败。
 - `/api/internal/**` 外网 404；服务间调用需 `X-Internal-Token`。
+- Nginx 按来源 IP 限流：`/ai/` 3r/s、`/api/` 20r/s、README 摘要 1r/s、登录入口 1r/s；README 单独收紧以保护 GitHub Token 配额。
+- Redis 开启 AOF（everysec），配额计数与对比 checkpoint 重启不丢；`ai_metrics` 按保留期自动清理。
 - README 与用户输入一律视为不可信：清洗 HTML、工具结果包裹、Markdown 禁止 raw HTML。
 - 只缓存公开 README 并标注来源，不复制全文分发，遵循 GitHub API 条款。
 

@@ -2,6 +2,7 @@ package com.githubstars.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.githubstars.entity.AiMetric;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -38,4 +39,10 @@ public interface AiMetricMapper extends BaseMapper<AiMetric> {
             WHERE created_at >= #{from}
             """)
     List<Map<String, Object>> latencySamples(@Param("from") LocalDateTime from);
+
+    /**
+     * 分批清理过期指标，避免长事务锁表。
+     */
+    @Delete("DELETE FROM ai_metrics WHERE created_at < #{cutoff} LIMIT 10000")
+    int deleteOlderThan(@Param("cutoff") LocalDateTime cutoff);
 }

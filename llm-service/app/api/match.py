@@ -17,7 +17,7 @@ from app.clients.vector import VectorStore
 from app.core.config import Settings, get_settings
 from app.graphs.match_graph import MatchError, MatchRunner
 from app.schemas.match import MatchRequest
-from app.services.embedding import EmbeddingService
+from app.services.embedding import get_embedding_service
 from app.services.metrics import report_request_metric
 
 logger = structlog.get_logger("match")
@@ -66,25 +66,25 @@ async def match(request: Request, body: MatchRequest) -> Any:
         )
 
     backend = BackendClient(settings)
-    try:
-        quota = await backend.reserve_chat_quota(user_id)
-    except QuotaExceededError as exc:
-        return JSONResponse(
-            status_code=429,
-            content={
-                "code": "quota_exceeded",
-                "message": str(exc),
-                "used": exc.used,
-                "limit": exc.limit,
-                "resetAt": exc.reset_at,
-            },
-        )
-    except BackendError as exc:
-        logger.warning("match_quota_failed", error=str(exc))
-        return JSONResponse(
-            status_code=503,
-            content={"code": "backend_unavailable", "message": "服务暂时不可用，请稍后重试"},
-        )
+
+    # idea 归属预校验：无效 ideaId 不应消耗配额，也不应进入模型解析
+    if body.idea_id is not None:
+        try:
+            await backend.get_idea(body.idea_id, user_id=user_id)
+        except BackendError as exc:
+            if exc.status == 404:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": "idea_not_found", "message": _MESSAGES["idea_not_found"]},
+                )
+            logger.warning("match_idea_check_failed", error=str(exc))
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "code": "backend_unavailable",
+                    "message": _MESSAGES["backend_unavailable"],
+                },
+            )
 
     vector = build_vector(settings)
     cache = CacheClient(settings)
@@ -92,10 +92,40 @@ async def match(request: Request, body: MatchRequest) -> Any:
         settings=settings,
         backend=backend,
         vector=vector,
-        embedding=EmbeddingService(settings),
+        embedding=get_embedding_service(settings),
         llm=llm,
         cache=cache,
     )
+
+    quota: dict[str, Any] = {}
+    # 扣费顺序：先看缓存命中直接回放，未命中才 reserve（命中缓存不扣配额）
+    if await runner.peek_cache(body, user_id=user_id) is None:
+        try:
+            quota = await backend.reserve_chat_quota(user_id)
+        except QuotaExceededError as exc:
+            await vector.close()
+            await cache.close()
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "code": "quota_exceeded",
+                    "message": str(exc),
+                    "used": exc.used,
+                    "limit": exc.limit,
+                    "resetAt": exc.reset_at,
+                },
+            )
+        except BackendError as exc:
+            logger.warning("match_quota_failed", error=str(exc))
+            await vector.close()
+            await cache.close()
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "code": "backend_unavailable",
+                    "message": _MESSAGES["backend_unavailable"],
+                },
+            )
 
     async def event_source() -> AsyncIterator[str]:
         started = time.perf_counter()

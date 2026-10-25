@@ -7,6 +7,7 @@ import base64
 import fnmatch
 import html
 import re
+import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -47,6 +48,25 @@ _BREAK = re.compile(r"<(br|hr)\s*/?>", re.IGNORECASE)
 _TAG = re.compile(r"</?[a-zA-Z][^>]*>")
 _LINK = re.compile(r"\[([^\]]*)\]\((?:javascript|data):[^)]*\)", re.IGNORECASE)
 _BLANK_LINES = re.compile(r"\n{3,}")
+
+
+class RequestRateLimiter:
+    """按分钟匀速放行：worker 与 backend 共享 GitHub Token 配额，避免首轮全量把额度打满。"""
+
+    def __init__(self, per_minute: int) -> None:
+        self._interval = 60.0 / per_minute if per_minute and per_minute > 0 else 0.0
+        self._lock = asyncio.Lock()
+        self._next_at = 0.0
+
+    async def acquire(self) -> None:
+        if self._interval <= 0:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            wait = self._next_at - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._next_at = max(time.monotonic(), self._next_at) + self._interval
 
 
 class GithubFetchError(RuntimeError):
@@ -105,6 +125,7 @@ class ReadmeFetcher:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._client: httpx.AsyncClient | None = None
+        self._limiter = RequestRateLimiter(settings.github_requests_per_minute)
 
     def _connect(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -159,6 +180,7 @@ class ReadmeFetcher:
         last_error: Exception | None = None
         for attempt in range(max(1, self._settings.github_max_retries)):
             try:
+                await self._limiter.acquire()
                 response = await client.get(url, headers=headers)
             except httpx.HTTPError as exc:
                 last_error = exc
@@ -191,6 +213,7 @@ class ReadmeFetcher:
         if "*" not in candidate:
             return candidate
         try:
+            await self._limiter.acquire()
             response = await client.get(f"/repos/{full_name}/contents/")
         except httpx.HTTPError as exc:
             logger.warning("manifest_list_failed", repo=full_name, error=type(exc).__name__)
@@ -220,6 +243,7 @@ class ReadmeFetcher:
             if not path:
                 continue
             try:
+                await self._limiter.acquire()
                 response = await client.get(f"/repos/{full_name}/contents/{path}")
             except httpx.HTTPError as exc:
                 logger.warning(

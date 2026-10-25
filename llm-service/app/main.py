@@ -10,7 +10,7 @@ from app.api import chat, compare, health, match
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
-from app.services.embedding import EmbeddingService
+from app.services.embedding import get_embedding_service
 
 logger = structlog.get_logger("app")
 
@@ -18,7 +18,7 @@ logger = structlog.get_logger("app")
 async def _warm_embedding(settings: Settings) -> None:
     """启动后预热 embedding，避免首次匹配把模型加载时间算进超时预算。"""
     try:
-        await EmbeddingService(settings).embed_query("warmup")
+        await get_embedding_service(settings).embed_query("warmup")
         logger.info("embedding_warmed", model=settings.llm_embedding_model)
     except asyncio.CancelledError:
         raise

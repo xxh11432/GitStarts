@@ -26,17 +26,17 @@ public class SyncScheduler {
         syncService.incrementalSync();
     }
 
-    /** 每天按主要语言补齐覆盖度。 */
+    /** 每天按分层策略补齐到目标仓库总量（高星基石 + 近期活跃 + 语言覆盖）。 */
     @Scheduled(initialDelay = 120_000, fixedDelay = 24 * 3_600_000)
-    public void languageJob() {
-        log.info("开始按语言同步");
-        syncService.languageSync();
+    public void discoveryJob() {
+        log.info("开始分层发现补齐");
+        syncService.discoverySync();
     }
 
     /** 每天刷新一批仓库的最新 Release 版本号（GraphQL 批量）。 */
     @Scheduled(initialDelay = 180_000, fixedDelay = 24 * 3_600_000)
     public void releaseJob() {
         log.info("开始刷新 Release 版本");
-        syncService.refreshReleases(1000);
+        syncService.refreshReleases(syncService.releaseRefreshBudget());
     }
 }

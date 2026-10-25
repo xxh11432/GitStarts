@@ -19,7 +19,7 @@ from app.core.logging import configure_logging
 from app.services.embedding import EmbeddingService
 from worker.embed import EmbeddingCache
 from worker.fetch_docs import ReadmeFetcher
-from worker.pipeline import INITIALIZED_KEY, run_index_pass
+from worker.pipeline import initialized_key, run_index_pass
 
 logger = structlog.get_logger("worker")
 
@@ -87,7 +87,7 @@ async def bootstrap_index(
     cache: CacheClient,
 ) -> None:
     """首次启动执行全量；完成后打标记，之后只跑增量。"""
-    initialized = await cache.get_text(INITIALIZED_KEY)
+    initialized = await cache.get_text(initialized_key(settings))
     full = settings.index_full_rebuild or initialized != "done"
     stats = await run_index_pass(
         settings,
@@ -99,7 +99,7 @@ async def bootstrap_index(
         full=full,
     )
     if full and stats.failed == 0 and stats.processed > 0 and not settings.index_max_repos:
-        await cache.set_text(INITIALIZED_KEY, "done")
+        await cache.set_text(initialized_key(settings), "done")
         logger.info("index_initialized")
 
 

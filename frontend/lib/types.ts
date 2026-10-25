@@ -24,6 +24,7 @@ export interface Repo {
   forks: number;
   watchers: number;
   openIssues: number;
+  heatScore?: number;
   topics: string[];
   category?: string;
   platform?: string;

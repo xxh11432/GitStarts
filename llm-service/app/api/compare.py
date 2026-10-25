@@ -17,7 +17,7 @@ from app.clients.vector import VectorStore
 from app.core.config import Settings, get_settings
 from app.graphs.compare_graph import CompareError, CompareRunner
 from app.schemas.compare import CompareRequest
-from app.services.embedding import EmbeddingService
+from app.services.embedding import get_embedding_service
 from app.services.metrics import report_request_metric
 
 logger = structlog.get_logger("compare")
@@ -242,7 +242,7 @@ def _build_runner(
         settings=settings,
         backend=backend,
         vector=vector,
-        embedding=EmbeddingService(settings),
+        embedding=get_embedding_service(settings),
         llm=llm,
         cache=cache,
     )

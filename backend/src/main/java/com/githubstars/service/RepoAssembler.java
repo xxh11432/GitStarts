@@ -32,6 +32,7 @@ public class RepoAssembler {
                 repo.getForks(),
                 repo.getWatchers(),
                 repo.getOpenIssues(),
+                repo.getHeatScore(),
                 parseTopics(repo.getTopics()),
                 repo.getCategory(),
                 repo.getPlatform(),

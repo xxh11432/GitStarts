@@ -16,6 +16,7 @@ public record RepoResponse(
         Integer forks,
         Integer watchers,
         Integer openIssues,
+        Integer heatScore,
         List<String> topics,
         String category,
         String platform,

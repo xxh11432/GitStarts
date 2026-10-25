@@ -279,6 +279,7 @@ public class RepoService {
             case "forks" -> Repository::getForks;
             case "pushed", "pushedAt" -> Repository::getPushedAt;
             case "created" -> Repository::getCreatedAt;
+            case "active", "heat" -> Repository::getHeatScore;
             default -> Repository::getStars;
         };
     }
