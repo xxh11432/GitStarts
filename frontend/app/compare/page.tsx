@@ -19,21 +19,22 @@ export const dynamic = 'force-dynamic';
 export default async function ComparePage({
   searchParams,
 }: {
-  searchParams: { repos?: string; ideaId?: string };
+  searchParams: Promise<{ repos?: string; ideaId?: string }>;
 }) {
+  const sp = await searchParams;
   const me = await fetchMe();
   if (!me) {
     redirect('/login?next=/compare');
   }
 
-  const urlRepos = (searchParams.repos ?? '')
+  const urlRepos = (sp.repos ?? '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item) => /^[\w.-]+\/[\w.-]+$/.test(item))
     .filter((item, index, list) => list.indexOf(item) === index)
     .slice(0, 4);
-  const parsedIdeaId = Number.parseInt(searchParams.ideaId ?? '', 10);
+  const parsedIdeaId = Number.parseInt(sp.ideaId ?? '', 10);
   const initialIdeaId = Number.isFinite(parsedIdeaId) && parsedIdeaId > 0 ? parsedIdeaId : null;
 
   // 「继续对比」入口：带入想法原文；没有带仓库时再读取该想法最近一次对比结果。

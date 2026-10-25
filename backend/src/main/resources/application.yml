@@ -73,6 +73,14 @@ app:
   quota:
     chat-daily: ${QUOTA_CHAT_DAILY:30}
     compare-daily: ${QUOTA_COMPARE_DAILY:3}
+  ops:
+    # 成本看板可读用户（GitHub login，逗号分隔）；为空时默认全部拒绝
+    logins: ${OPS_GITHUB_LOGINS:}
+    daily-token-budget: ${OPS_DAILY_TOKEN_BUDGET:2000000}
+    daily-compare-budget: ${OPS_DAILY_COMPARE_BUDGET:200}
+    p95-chat-ms: ${OPS_P95_CHAT_MS:30000}
+    p95-match-ms: ${OPS_P95_MATCH_MS:30000}
+    p95-compare-ms: ${OPS_P95_COMPARE_MS:180000}
 
 logging:
   level:

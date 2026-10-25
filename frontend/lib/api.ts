@@ -8,6 +8,7 @@ import type {
   IdeaView,
   Me,
   MetaResponse,
+  OpsMetrics,
   PageResult,
   Profile,
   ReadmeSummary,
@@ -106,7 +107,7 @@ export async function fetchSharedComparison(token: string): Promise<{
  * 未登录/无权限返回 null；后端其他错误直接抛出，避免被误当成空数据。
  */
 async function getAuthedJson<T>(path: string): Promise<T | null> {
-  const cookieHeader = cookies().toString();
+  const cookieHeader = (await cookies()).toString();
   if (!cookieHeader) {
     return null;
   }
@@ -175,6 +176,11 @@ export async function fetchRecommendations(limit = 6): Promise<Recommendation[] 
   return getAuthedJson(`/profile/recommendations?limit=${limit}`);
 }
 
+/** 成本看板：仅 OPS_GITHUB_LOGINS 中的账号可读，无权限返回 null。 */
+export async function fetchOpsMetrics(days = 7): Promise<OpsMetrics | null> {
+  return getAuthedJson(`/ops/metrics?days=${days}`);
+}
+
 export async function fetchMyConversations(page = 1, size = 20): Promise<PageResult<ConversationSummary> | null> {
   return getAuthedJson(`/conversations?page=${page}&size=${size}`);
 }
@@ -188,7 +194,7 @@ export async function fetchConversation(id: string | number): Promise<Conversati
  * 未登录或后端不可用时返回 null，页面按匿名处理。
  */
 export async function fetchMe(): Promise<Me | null> {
-  const cookieHeader = cookies().toString();
+  const cookieHeader = (await cookies()).toString();
   if (!cookieHeader) {
     return null;
   }

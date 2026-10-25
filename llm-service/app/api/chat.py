@@ -17,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.graphs.chat_graph import SYSTEM_PROMPT, TIMEOUT_TEXT, ChatRunner
 from app.graphs.state import ChatState
 from app.schemas.chat import ChatRequest
+from app.services.metrics import report_request_metric
 from app.services.persistence import (
     conversation_title,
     persist_conversation,
@@ -130,12 +131,14 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
         )
 
         failed = False
+        status = "ok"
         try:
             async with asyncio.timeout(settings.request_timeout_seconds):
                 async for event in runner.run():
                     yield _sse(event.name, event.data)
         except TimeoutError:
             failed = True
+            status = "timeout"
             logger.warning("chat_timeout", conversation_id=conversation_id)
             yield _sse("error", {"code": "timeout", "message": TIMEOUT_TEXT})
         except asyncio.CancelledError:
@@ -143,10 +146,19 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
             raise
         except Exception as exc:
             failed = True
+            status = "error"
             logger.exception("chat_failed", error=type(exc).__name__)
             yield _sse("error", {"code": "chat_failed", "message": _CHAT_FAILED})
 
         took_ms = int((time.perf_counter() - started) * 1000)
+        await report_request_metric(
+            backend,
+            kind="chat",
+            status=status,
+            latency_ms=took_ms,
+            tokens_in=state.tokens_in,
+            tokens_out=state.tokens_out,
+        )
         if not failed:
             yield _sse(
                 "done",

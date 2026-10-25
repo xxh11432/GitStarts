@@ -20,13 +20,13 @@ GitStars（仓库内亦称 GitStarts）是"开源方案匹配与对比平台"：
 
 | 单元 | 技术栈 | 进程/端口 | 职责 |
 |---|---|---|---|
-| `frontend` | Next.js 14 App Router · React 18 · TypeScript · Tailwind | 3000 | 页面、SSE 消费、流式渲染 |
+| `frontend` | Next.js 16 App Router · React 19 · TypeScript · Tailwind | 3000 | 页面、SSE 消费、流式渲染 |
 | `backend` | Java 17 · Spring Boot 3.5 · MyBatis-Plus · Spring Security/OAuth2 | 8080，context-path `/api` | 账号、会话、配额、业务持久化、仓库检索（唯一数据出口） |
 | `llm-service` | Python 3.12 · FastAPI · LangGraph · pydantic v2 | 8081，路径前缀 `/ai` | 唯一模型出口、prompt、工具编排、召回重排、SSE、Qdrant/Redis 访问 |
 | `ingest-worker` | Python 3.12（与 llm-service 同镜像，入口 `python -m worker`） | 无对外端口 | 抓取 README/manifest → 清洗 → 分块 → embedding → Qdrant |
 
 基础设施：MySQL 8、Redis 7、Qdrant 1.x、Nginx、Docker Compose。
-当前进度：M0–M6 已完成，M7（压测/成本看板/安全复检/可访问性）待启动。
+当前进度：M0–M7 已完成（压测 / Lighthouse 需在预发布环境执行并登记结果）。
 方案与评测说明见 [完整方案](doc/AI匹配与对比平台完整方案.md)、[技术方案](doc/技术方案.md)、[doc/eval/](doc/eval/)。
 
 ---
@@ -156,7 +156,8 @@ cd llm-service; uv run python -m worker
 
 ### 5.3 TypeScript / Next.js
 
-- Next.js 14 App Router；页面默认服务端组件，交互与流式用 `'use client'` 客户端组件。
+- Next.js 16 App Router；页面默认服务端组件，交互与流式用 `'use client'` 客户端组件。
+- Next 16 的 `cookies()`、页面 `params` / `searchParams` 均为异步：服务端必须先 `await`，不要按 Next 14 的同步写法新增代码。
 - 服务端取数走 [api.ts](frontend/lib/api.ts)：`API_INTERNAL_URL` 存在时直连 backend，否则用 `/api`；需要登录态时透传 `cookies()`，失败返回 `null` 由页面按匿名处理。
 - 浏览器写请求走 [client.ts](frontend/lib/client.ts)：先 `ensureCsrfToken()`，带 `credentials: 'include'` 与 `X-XSRF-TOKEN`。
 - SSE 解析统一放在 `lib/chat.ts` / `lib/match.ts` / `lib/compare.ts`，组件不手写流解析。

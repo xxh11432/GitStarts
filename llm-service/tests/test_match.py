@@ -40,7 +40,7 @@ class FakeLlm:
         outer = self
 
         class Runnable:
-            async def ainvoke(self, messages: list[Any]) -> Any:
+            async def ainvoke(self, messages: list[Any], config: Any = None) -> Any:
                 outer.calls += 1
                 if schema is LlmRequirement:
                     return outer._requirement or LlmRequirement(goal="兜底目标")
@@ -377,7 +377,7 @@ async def test_parse_requirement_falls_back_when_llm_breaks() -> None:
     class BrokenLlm:
         def with_structured_output(self, schema: type, method: str | None = None) -> Any:
             class Runnable:
-                async def ainvoke(self, messages: list[Any]) -> Any:
+                async def ainvoke(self, messages: list[Any], config: Any = None) -> Any:
                     raise RuntimeError("boom")
 
             return Runnable()

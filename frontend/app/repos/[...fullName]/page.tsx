@@ -22,11 +22,12 @@ import type { ReadmeSummary, Repo } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  params: { fullName: string[] };
+  params: Promise<{ fullName: string[] }>;
 }
 
 export default async function RepoDetailPage({ params }: PageProps) {
-  const fullName = params.fullName.join('/');
+  const { fullName: segments } = await params;
+  const fullName = segments.join('/');
 
   let repo: Repo;
   try {

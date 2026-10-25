@@ -42,7 +42,7 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
   };
 
   return (
-    <section aria-live="polite" className="flex flex-col gap-5">
+    <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-primary">
@@ -74,16 +74,23 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
 
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="w-full min-w-[820px] border-collapse text-left">
+          <caption className="sr-only">
+            {result.repos.length} 个仓库在 {result.dimensions.length} 个维度上的对比矩阵，逐格列出结论、置信度与证据入口
+          </caption>
           <thead>
             <tr className="border-b border-border bg-muted">
-              <th className="sticky left-0 top-0 z-30 w-40 border-r border-border bg-muted px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                Dimension
+              <th
+                scope="col"
+                className="sticky left-0 top-0 z-30 w-40 border-r border-border bg-muted px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground"
+              >
+                维度
               </th>
               {result.repos.map((repo) => {
                 const recommended = result.verdict.recommended.includes(repo.fullName);
                 return (
                   <th
                     key={repo.fullName}
+                    scope="col"
                     className="sticky top-0 z-20 min-w-[210px] border-r border-border bg-muted px-4 py-3 align-top last:border-r-0"
                   >
                     <p className="break-words font-mono text-[12px] font-medium text-foreground">
@@ -123,6 +130,7 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
                   )}
                 >
                   <th
+                    scope="row"
                     className={cn(
                       'sticky left-0 z-10 border-r border-border bg-card px-4 py-4 align-top',
                       hasDiff && 'border-l-2 border-l-highlight',

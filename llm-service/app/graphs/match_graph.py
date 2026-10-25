@@ -32,6 +32,7 @@ from app.schemas.match import (
     RerankResult,
 )
 from app.services.embedding import EmbeddingService
+from app.services.usage import UsageCollector
 
 logger = structlog.get_logger("match_graph")
 
@@ -614,7 +615,9 @@ def _canonical(value: dict[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
-async def _invoke_structured(llm: Any, schema: type, messages: list[Any]) -> Any:
+async def _invoke_structured(
+    llm: Any, schema: type, messages: list[Any], usage: UsageCollector | None = None
+) -> Any:
     from langchain_core.messages import SystemMessage
 
     schema_hint = SystemMessage(
@@ -624,18 +627,21 @@ async def _invoke_structured(llm: Any, schema: type, messages: list[Any]) -> Any
             + json.dumps(schema.model_json_schema(by_alias=True), ensure_ascii=False)
         )
     )
+    config = {"callbacks": [usage]} if usage is not None else None
     last_error: Exception | None = None
     for method in ("json_schema", "json_mode", "function_calling"):
         try:
             runnable = llm.with_structured_output(schema, method=method)
             payload = [*messages, schema_hint] if method == "json_mode" else messages
-            return await runnable.ainvoke(payload)
+            return await runnable.ainvoke(payload, config=config)
         except Exception as exc:  # 某些供应商不支持 json_schema / tools
             last_error = exc
     raise MatchError(f"结构化输出失败：{type(last_error).__name__}", code="llm_failed")
 
 
-async def parse_requirement(llm: Any, raw_text: str) -> Requirement:
+async def parse_requirement(
+    llm: Any, raw_text: str, *, usage: UsageCollector | None = None
+) -> Requirement:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     messages = [
@@ -643,7 +649,7 @@ async def parse_requirement(llm: Any, raw_text: str) -> Requirement:
         HumanMessage(content=f"[USER_TEXT]\n{raw_text}\n[/USER_TEXT]"),
     ]
     try:
-        result = await _invoke_structured(llm, LlmRequirement, messages)
+        result = await _invoke_structured(llm, LlmRequirement, messages, usage)
     except MatchError:
         logger.warning("requirement_parse_failed", fallback=True)
         return Requirement(
@@ -660,6 +666,8 @@ async def rerank_candidates(
     llm: Any,
     requirement: Requirement,
     candidates: list[tuple[dict[str, Any], float, list[VectorHit]]],
+    *,
+    usage: UsageCollector | None = None,
 ) -> dict[str, RerankItem]:
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -692,7 +700,7 @@ async def rerank_candidates(
         HumanMessage(content=candidate_block),
     ]
     try:
-        result = await _invoke_structured(llm, RerankResult, messages)
+        result = await _invoke_structured(llm, RerankResult, messages, usage)
     except MatchError:
         logger.warning("rerank_failed")
         return {}
@@ -724,7 +732,17 @@ class MatchRunner:
         self._embedding = embedding
         self._llm = llm
         self._cache = cache
+        self._usage = UsageCollector()
         self.idea_id: int | None = None
+        self.cached = False
+
+    @property
+    def tokens_in(self) -> int:
+        return self._usage.tokens_in
+
+    @property
+    def tokens_out(self) -> int:
+        return self._usage.tokens_out
 
     async def run(self, request: MatchRequest, *, user_id: int) -> AsyncIterator[MatchEvent]:
         started = time.perf_counter()
@@ -732,6 +750,7 @@ class MatchRunner:
         cache_key = self._cache_key(request, user_id, limit)
         cached = await self._cache.get_json(cache_key) if self._cache else None
         if cached:
+            self.cached = True
             requirement = Requirement.model_validate(cached["requirement"])
             self.idea_id = cached.get("ideaId")
             yield MatchEvent(
@@ -854,7 +873,9 @@ class MatchRunner:
                 if name and name not in candidates:
                     candidates[name] = (repo, 0.2, [])
             if fallback:
-                logger.info("match_fallback_popular", count=len(fallback), vector_failed=vector_failed)
+                logger.info(
+                    "match_fallback_popular", count=len(fallback), vector_failed=vector_failed
+                )
 
         if vector_failed and not candidates:
             raise MatchError("向量检索不可用，且关键词检索无结果", code="backend_unavailable")
@@ -886,7 +907,9 @@ class MatchRunner:
         rerank_map: dict[str, RerankItem] = {}
         rerank_pool = preliminary[: self._settings.match_rerank_limit]
         if len(rerank_pool) >= 3:
-            rerank_map = await rerank_candidates(self._llm, requirement, rerank_pool)
+            rerank_map = await rerank_candidates(
+                self._llm, requirement, rerank_pool, usage=self._usage
+            )
         fitted = bool(rerank_map)
 
         scored: list[Candidate] = []
@@ -960,7 +983,7 @@ class MatchRunner:
             stored_raw = str(idea.get("rawText") or "")
             raw_text = (request.raw_text or "").strip()
             if raw_text and raw_text != stored_raw:
-                requirement = await parse_requirement(self._llm, raw_text)
+                requirement = await parse_requirement(self._llm, raw_text, usage=self._usage)
                 await self._backend.update_idea(self.idea_id, requirement.model_dump())
                 return requirement
             structured = idea.get("structured") or {}
@@ -968,14 +991,14 @@ class MatchRunner:
                 structured.get("must") or structured.get("should") or structured.get("goal")
             ):
                 return normalize_requirement(Requirement.model_validate(structured), stored_raw)
-            requirement = await parse_requirement(self._llm, stored_raw)
+            requirement = await parse_requirement(self._llm, stored_raw, usage=self._usage)
             await self._backend.update_idea(self.idea_id, requirement.model_dump())
             return requirement
 
         raw_text = (request.raw_text or "").strip()
         if not raw_text:
             raise MatchError("缺少想法描述", code="empty_requirement")
-        requirement = await parse_requirement(self._llm, raw_text)
+        requirement = await parse_requirement(self._llm, raw_text, usage=self._usage)
         self.idea_id = await self._backend.create_idea(
             user_id=user_id,
             raw_text=raw_text,

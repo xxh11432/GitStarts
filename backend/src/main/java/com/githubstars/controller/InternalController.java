@@ -1,5 +1,6 @@
 package com.githubstars.controller;
 
+import com.githubstars.dto.AiMetricRequest;
 import com.githubstars.dto.ComparisonSaveRequest;
 import com.githubstars.dto.ConversationCreateRequest;
 import com.githubstars.dto.IdeaCreateRequest;
@@ -19,6 +20,7 @@ import com.githubstars.service.ComparisonService;
 import com.githubstars.service.ConversationService;
 import com.githubstars.service.DocumentService;
 import com.githubstars.service.IdeaService;
+import com.githubstars.service.OpsMetricsService;
 import com.githubstars.service.QuotaKind;
 import com.githubstars.service.QuotaService;
 import com.githubstars.service.RankService;
@@ -56,11 +58,12 @@ public class InternalController {
     private final DocumentService documentService;
     private final IdeaService ideaService;
     private final ComparisonService comparisonService;
+    private final OpsMetricsService opsMetricsService;
 
     public InternalController(QuotaService quotaService, RepoService repoService,
                               RankService rankService, ConversationService conversationService,
                               DocumentService documentService, IdeaService ideaService,
-                              ComparisonService comparisonService) {
+                              ComparisonService comparisonService, OpsMetricsService opsMetricsService) {
         this.quotaService = quotaService;
         this.repoService = repoService;
         this.rankService = rankService;
@@ -68,6 +71,7 @@ public class InternalController {
         this.documentService = documentService;
         this.ideaService = ideaService;
         this.comparisonService = comparisonService;
+        this.opsMetricsService = opsMetricsService;
     }
 
     @PostMapping("/quota/reserve")
@@ -214,6 +218,16 @@ public class InternalController {
     @PostMapping("/comparisons")
     public Map<String, Object> createComparison(@RequestBody ComparisonSaveRequest request) {
         return Map.of("id", comparisonService.create(request));
+    }
+
+    /**
+     * 成本看板：llm-service 在请求结束时上报 token、延迟与结果。
+     */
+    @PostMapping("/ai-metrics")
+    public Map<String, Object> recordAiMetric(@RequestBody AiMetricRequest request) {
+        opsMetricsService.record(request.kind(), request.status(), request.tokensIn(),
+                request.tokensOut(), request.latencyMs(), request.cached());
+        return Map.of("ok", true);
     }
 
     /**

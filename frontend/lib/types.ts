@@ -124,3 +124,49 @@ export interface ConversationDetail {
   conversation: ConversationSummary;
   messages: MessageView[];
 }
+
+export interface OpsMetricsDay {
+  day: string;
+  chatCount: number;
+  matchCount: number;
+  compareCount: number;
+  tokensIn: number;
+  tokensOut: number;
+  requests: number;
+  errors: number;
+  p95Ms?: number;
+  p95ByKind: Record<string, number>;
+}
+
+export interface OpsMetricsTotals {
+  chatCount: number;
+  matchCount: number;
+  compareCount: number;
+  tokensIn: number;
+  tokensOut: number;
+  requests: number;
+  errors: number;
+  p95Ms?: number;
+}
+
+export interface OpsBudgetAlert {
+  code: string;
+  day: string;
+  value: number;
+  threshold: number;
+}
+
+export interface OpsMetrics {
+  from: string;
+  to: string;
+  days: OpsMetricsDay[];
+  totals: OpsMetricsTotals;
+  budgets: {
+    dailyTokens: number;
+    dailyCompares: number;
+    p95ChatMs: number;
+    p95MatchMs: number;
+    p95CompareMs: number;
+  };
+  alerts: OpsBudgetAlert[];
+}

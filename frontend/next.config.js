@@ -4,6 +4,9 @@ const API_PROXY = process.env.API_INTERNAL_URL || 'http://127.0.0.1:8080';
 const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
+  poweredByHeader: false,
+  // 全站不使用 next/image，关闭优化器：减少攻击面与磁盘缓存，图片走原始静态资源
+  images: { unoptimized: true },
   async rewrites() {
     // 本地开发（3000 端口）没有 Nginx，客户端 /api 请求同源代理到后端；
     // Docker 部署时 Nginx 直接接管 /api，不会走到这里。

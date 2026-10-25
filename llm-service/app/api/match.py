@@ -18,6 +18,7 @@ from app.core.config import Settings, get_settings
 from app.graphs.match_graph import MatchError, MatchRunner
 from app.schemas.match import MatchRequest
 from app.services.embedding import EmbeddingService
+from app.services.metrics import report_request_metric
 
 logger = structlog.get_logger("match")
 router = APIRouter()
@@ -98,39 +99,57 @@ async def match(request: Request, body: MatchRequest) -> Any:
 
     async def event_source() -> AsyncIterator[str]:
         started = time.perf_counter()
+        status = "ok"
+        cancelled = False
         try:
             async with asyncio.timeout(settings.request_timeout_seconds):
                 async for event in runner.run(body, user_id=user_id):
                     yield _sse(event.name, event.data)
         except TimeoutError:
+            status = "timeout"
             logger.warning("match_timeout", user_id=user_id)
             yield _sse("error", {"code": "timeout", "message": _MESSAGES["timeout"]})
         except asyncio.CancelledError:
+            cancelled = True
             logger.info("match_cancelled", user_id=user_id)
             raise
         except MatchError as exc:
+            status = "error"
             logger.warning("match_failed", code=exc.code, error=str(exc))
             yield _sse(
                 "error",
                 {"code": exc.code, "message": _MESSAGES.get(exc.code, _MESSAGES["match_failed"])},
             )
         except BackendError as exc:
+            status = "error"
             logger.warning("match_backend_failed", error=str(exc))
             yield _sse(
                 "error",
                 {"code": "backend_unavailable", "message": _MESSAGES["backend_unavailable"]},
             )
         except Exception as exc:
+            status = "error"
             logger.exception("match_crashed", error=type(exc).__name__)
             yield _sse("error", {"code": "match_failed", "message": _MESSAGES["match_failed"]})
         finally:
+            took_ms = int((time.perf_counter() - started) * 1000)
             logger.info(
                 "match_finished",
                 user_id=user_id,
                 request_id=request_id,
-                took_ms=int((time.perf_counter() - started) * 1000),
+                took_ms=took_ms,
                 quota=quota.get("chat"),
             )
+            if not cancelled:
+                await report_request_metric(
+                    backend,
+                    kind="match",
+                    status=status,
+                    latency_ms=took_ms,
+                    tokens_in=runner.tokens_in,
+                    tokens_out=runner.tokens_out,
+                    cached=runner.cached,
+                )
             await vector.close()
             await cache.close()
 

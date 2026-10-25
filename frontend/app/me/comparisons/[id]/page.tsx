@@ -12,16 +12,17 @@ export const dynamic = 'force-dynamic';
 export default async function ComparisonDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const me = await fetchMe();
   if (!me) {
-    redirect(`/login?next=/me/comparisons/${params.id}`);
+    redirect(`/login?next=/me/comparisons/${id}`);
   }
-  if (!/^\d+$/.test(params.id)) {
+  if (!/^\d+$/.test(id)) {
     notFound();
   }
-  const comparison = await fetchComparison(params.id);
+  const comparison = await fetchComparison(id);
   if (!comparison) {
     notFound();
   }

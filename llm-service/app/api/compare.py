@@ -18,6 +18,7 @@ from app.core.config import Settings, get_settings
 from app.graphs.compare_graph import CompareError, CompareRunner
 from app.schemas.compare import CompareRequest
 from app.services.embedding import EmbeddingService
+from app.services.metrics import report_request_metric
 
 logger = structlog.get_logger("compare")
 router = APIRouter()
@@ -163,41 +164,59 @@ async def compare(request: Request, body: CompareRequest) -> Any:
 
     async def event_source() -> AsyncIterator[str]:
         started = time.perf_counter()
+        status = "ok"
+        cancelled = False
         try:
             async with asyncio.timeout(settings.compare_timeout_seconds):
                 async for event in runner.run(prepared, user_id=user_id):
                     yield _sse(event.name, event.data)
         except TimeoutError:
+            status = "timeout"
             logger.warning("compare_timeout", user_id=user_id)
             yield _sse("error", {"code": "timeout", "message": _MESSAGES["timeout"]})
         except asyncio.CancelledError:
             # 断流不删除 checkpoint，客户端可凭同一 cacheKey 续跑
+            cancelled = True
             logger.info("compare_cancelled", user_id=user_id)
             raise
         except CompareError as exc:
+            status = "error"
             logger.warning("compare_failed", code=exc.code, error=str(exc))
             yield _sse(
                 "error",
                 {"code": exc.code, "message": _MESSAGES.get(exc.code, _MESSAGES["compare_failed"])},
             )
         except BackendError as exc:
+            status = "error"
             logger.warning("compare_backend_failed", error=str(exc))
             yield _sse(
                 "error",
                 {"code": "backend_unavailable", "message": _MESSAGES["backend_unavailable"]},
             )
         except Exception as exc:
+            status = "error"
             logger.exception("compare_crashed", error=type(exc).__name__)
             yield _sse("error", {"code": "compare_failed", "message": _MESSAGES["compare_failed"]})
         finally:
+            took_ms = int((time.perf_counter() - started) * 1000)
             logger.info(
                 "compare_finished",
                 user_id=user_id,
                 request_id=request_id,
                 repos=prepared.repo_keys,
-                took_ms=int((time.perf_counter() - started) * 1000),
+                took_ms=took_ms,
                 quota=quota.get("compare", "reserved"),
             )
+            if not cancelled:
+                await report_request_metric(
+                    backend,
+                    kind="compare",
+                    status=status,
+                    latency_ms=took_ms,
+                    tokens_in=runner.tokens_in,
+                    tokens_out=runner.tokens_out,
+                    cached=runner.cached,
+                )
             await runner.close()
             await cache.close()
 

@@ -292,6 +292,29 @@ class BackendClient:
         )
         return int(body["id"])
 
+    async def record_ai_metric(
+        self,
+        *,
+        kind: str,
+        status: str,
+        latency_ms: int,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cached: bool = False,
+    ) -> None:
+        await self._request(
+            "POST",
+            "/internal/ai-metrics",
+            json_body={
+                "kind": kind,
+                "status": status,
+                "latencyMs": latency_ms,
+                "tokensIn": tokens_in,
+                "tokensOut": tokens_out,
+                "cached": cached,
+            },
+        )
+
     async def append_message(
         self,
         *,

@@ -82,7 +82,9 @@ class FakeLlm:
         outer = self
 
         class Runnable:
-            async def ainvoke(self, messages: list[Any]) -> Any:
+            async def ainvoke(
+                self, messages: list[Any], config: Any = None
+            ) -> Any:
                 outer.calls.append(schema)
                 if schema is RepoAnalysis:
                     return RepoAnalysis(

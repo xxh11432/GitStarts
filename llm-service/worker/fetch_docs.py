@@ -8,6 +8,7 @@ import fnmatch
 import html
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import httpx
 import structlog
@@ -19,6 +20,8 @@ logger = structlog.get_logger("fetch_docs")
 
 MAX_CONTENT_CHARS = 1_800_000
 MAX_MANIFEST_CHARS = 60_000
+# owner/repo 只接受 GitHub 合法字符，避免把任意路径拼进 API URL
+_FULL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$")
 
 # 按语言挑 1–2 个关键 manifest，避免对每个仓库盲试所有路径浪费 GitHub 额度。
 MANIFEST_CANDIDATES: dict[str, tuple[str, ...]] = {
@@ -48,6 +51,19 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 
 class GithubFetchError(RuntimeError):
     """README 拉取失败（非 404）。"""
+
+
+class GithubTargetError(GithubFetchError):
+    """目标地址不在白名单或仓库名非法（SSRF 防护）。"""
+
+
+def validate_full_name(full_name: str) -> str:
+    if not _FULL_NAME.fullmatch(full_name):
+        raise GithubTargetError(f"仓库名不合法：{full_name!r}")
+    owner, repo = full_name.split("/", 1)
+    if owner in (".", "..") or repo in (".", "..") or ".." in (owner, repo):
+        raise GithubTargetError(f"仓库名不允许路径穿越：{full_name!r}")
+    return full_name
 
 
 @dataclass(frozen=True)
@@ -100,16 +116,42 @@ class ReadmeFetcher:
             if self._settings.github_token:
                 headers["Authorization"] = f"Bearer {self._settings.github_token}"
             self._client = httpx.AsyncClient(
-                base_url=self._settings.github_api_base.rstrip("/"),
+                base_url=self._api_base(),
                 headers=headers,
                 timeout=self._settings.github_timeout_seconds,
+                follow_redirects=False,
             )
         return self._client
+
+    def _api_base(self) -> str:
+        """SSRF 防护：只允许 HTTPS + 显式白名单主机，且 URL 不得携带凭据。"""
+        base = self._settings.github_api_base.rstrip("/")
+        parsed = urlsplit(base)
+        allowed = {
+            host.strip().lower()
+            for host in self._settings.github_allowed_hosts.split(",")
+            if host.strip()
+        }
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.hostname.lower() not in allowed
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise GithubTargetError(
+                f"GITHUB_API_BASE 不在白名单内：{base!r}；"
+                "仅允许 https 且主机命中 GITHUB_ALLOWED_HOSTS"
+            )
+        return base
 
     async def fetch_readme(
         self, full_name: str, *, etag: str | None = None
     ) -> FetchedReadme | None:
         """返回 None 表示仓库没有 README（404）；unchanged=True 表示 304。"""
+        validate_full_name(full_name)
         client = self._connect()
         headers = {"If-None-Match": etag} if etag else {}
         url = f"/repos/{full_name}/readme"
@@ -171,6 +213,7 @@ class ReadmeFetcher:
         self, full_name: str, *, language: str | None
     ) -> FetchedManifest | None:
         """抓取一个关键 manifest（依赖/部署信息）；没有则返回 None。"""
+        validate_full_name(full_name)
         client = self._connect()
         for candidate in manifest_paths(language):
             path = await self._resolve_manifest_path(client, full_name, candidate)

@@ -185,6 +185,20 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     PRIMARY KEY (user_id, day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- AI 请求指标（M7）：按请求记录 token、延迟与结果，用于成本看板与 P95
+CREATE TABLE IF NOT EXISTS ai_metrics (
+    id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+    kind       VARCHAR(16) NOT NULL COMMENT 'chat / match / compare',
+    status     VARCHAR(16) NOT NULL COMMENT 'ok / error / timeout / cancelled',
+    tokens_in  BIGINT DEFAULT 0,
+    tokens_out BIGINT DEFAULT 0,
+    latency_ms INT NOT NULL,
+    cached     TINYINT(1) DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    KEY idx_created (created_at),
+    KEY idx_kind_created (kind, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ===== 升级兼容：给已存在的 repositories 表补列（可重复执行） =====
 DROP PROCEDURE IF EXISTS gs_add_column;
 DELIMITER $$

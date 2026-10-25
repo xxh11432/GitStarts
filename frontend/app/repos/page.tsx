@@ -13,13 +13,13 @@ import { cn } from '@/lib/utils';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 const PAGE_SIZE = 20;
 
 export default async function ReposPage({ searchParams }: PageProps) {
-  const sp = searchParams ?? {};
+  const sp = await searchParams;
   const value = (key: string) => (typeof sp[key] === 'string' ? (sp[key] as string) : undefined);
 
   const q = value('q');

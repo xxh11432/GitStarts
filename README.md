@@ -8,7 +8,7 @@
 
 [![Java](https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
@@ -87,6 +87,7 @@ fit = 0.45 × 语义相关
 - **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → fastembed embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 硬过滤 → 向量召回 + 关键词补充 → LLM 重排 ±0.1 → 四维契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 `recall@10` 报告脚本
 - **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
 - **M6 个性化沉淀**：收藏与备注（`favorites`，跨会话一致）；`/me` 完整化（配额、想法、对比、收藏、会话入口）；对比历史 / 想法 / 会话历史的列表与详情；技能 / 兴趣 / 偏好画像与规则推荐位；对比分享链接可撤销、记录可删除；账号删除时清理全部个人数据
+- **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 关闭图片优化器；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
 - **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比前配额预检；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
 
 **规划中（AI 升级）**
@@ -100,13 +101,13 @@ fit = 0.45 × 语义相关
 | M4 | 语义索引与匹配：README 分块 embedding、召回重排、`/ai/match` | 已完成 |
 | M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 已完成 |
 | M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 已完成 |
-| M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 待启动 |
+| M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 进行中（代码与文档完成；压测 / Lighthouse 待预发布环境执行） |
 
 ## 架构
 
 ```mermaid
 flowchart TB
-    subgraph FE[Next.js 14]
+    subgraph FE[Next.js 16]
         P[首页 / 匹配 / 对比 / 详情 / 个人中心]
     end
 
@@ -158,13 +159,13 @@ flowchart TB
 | AI 网关 | Python 3.12 · FastAPI · LangGraph · langchain-openai |
 | 认证 | Spring Security · OAuth2 Client · Spring Session Redis |
 | 存储 | MySQL 8 · Redis 7 · Qdrant 1.x |
-| 前端 | Next.js 14（App Router）· TypeScript · Tailwind CSS · shadcn/ui（Radix UI） |
+| 前端 | Next.js 16（App Router）· React 19 · TypeScript · Tailwind CSS · shadcn/ui（Radix UI） |
 | 模型 | OpenAI 兼容协议（默认 HiModels：DeepSeek V4 Flash）；embedding 本地 fastembed（1024 维多语言模型），可切供应商 API |
 | 部署 | Nginx · Docker Compose |
 
 ## 快速开始
 
-环境要求：Docker + Docker Compose；本地开发另需 JDK 17、Maven 3.9+、Node.js 20+、Python 3.12 + uv。
+环境要求：Docker + Docker Compose；本地开发另需 JDK 17、Maven 3.9+、Node.js 20.9+（Next.js 16 要求）、Python 3.12 + uv。
 
 ```bash
 git clone https://github.com/xxh11432/GitStarts.git
@@ -178,6 +179,9 @@ docker compose up -d --build
 
 镜像构建期不再下载 embedding 模型。容器启动时先检查 `model-cache` 卷（挂载到 `/models`）里是否已有模型：命中则离线加载，缺失才在首次使用时下载（约 2 GB）并持久化到该卷，之后重建或重启容器都不会重复下载。如需把模型直接打进镜像（离线部署），可设 `PREWARM_MODELS=true`。
 
+> 从 M6 升级到 M7 时，已有数据库需补 `ai_metrics` 表（新库由 `deploy/init.sql` 直接创建）：
+> 重跑 `deploy/init.sql` 即可（`CREATE TABLE IF NOT EXISTS`，重复执行无副作用）。
+>
 > 从 M6 升级到当前版本时，已有数据库需补 `repositories.platforms`、`latest_release_tag`、`latest_release_at`、`release_checked_at` 四列：
 > 重跑 `deploy/init.sql` 即可，脚本内置幂等补列存储过程，重复执行无副作用。
 >
@@ -268,6 +272,10 @@ uv run python -m worker
 | `COMPARE_CHECKPOINT_TTL_SECONDS` | 断流续跑 checkpoint 秒数（默认 3600） |
 | `COMPARE_TIMEOUT_SECONDS` | 单次对比总超时（默认 240 秒） |
 | `INDEX_MANIFESTS_ENABLED` | worker 是否抓取关键 manifest（package.json / pom.xml 等）并入索引（默认 true） |
+| `OPS_GITHUB_LOGINS` | 可访问 `/ops` 成本看板的 GitHub 登录名，逗号分隔；留空时全部拒绝 |
+| `OPS_DAILY_TOKEN_BUDGET` / `OPS_DAILY_COMPARE_BUDGET` | 日 token / 日对比次数预算（默认 200 万 / 200） |
+| `OPS_P95_CHAT_MS` / `OPS_P95_MATCH_MS` / `OPS_P95_COMPARE_MS` | 分类型 P95 延迟告警阈值（默认 30s / 30s / 180s） |
+| `GITHUB_API_BASE` / `GITHUB_ALLOWED_HOSTS` | README / manifest 抓取地址与 SSRF 主机白名单（默认仅 `api.github.com`，强制 HTTPS） |
 
 ## 目录结构
 
@@ -281,7 +289,7 @@ GitStarts/
 │       ├── service/          # 查询、榜单、同步、缓存、用户、配额
 │       ├── mapper/ entity/   # MyBatis-Plus
 │       └── config/           # Redis、线程池、调度、请求 ID（X-Request-Id → MDC）
-├── frontend/                 # Next.js 14
+├── frontend/                 # Next.js 16
 │   ├── app/                  # 首页 / 仓库 / 匹配 / 登录 / 个人中心 / 对比 / 只读分享页
 │   ├── components/           # Navbar / CommandMenu / MobileNav / RepoCard / ui/（shadcn 基础组件）
 │   │   ├── match/            # 条件编辑、候选卡、契合度与证据
@@ -338,6 +346,7 @@ GitStarts/
 | GET | `/api/conversations/{id}` | 会话详情与消息（仅本人） |
 | DELETE | `/api/conversations/{id}` | 删除会话与消息（仅本人，需 CSRF） |
 | DELETE | `/api/account` | 删除账号并清理收藏 / 想法 / 对比 / 会话 / 画像 / 用量（需 CSRF） |
+| GET | `/api/ops/metrics?days=7` | 成本看板：日请求数、token、P95 延迟与预算告警（仅 `OPS_GITHUB_LOGINS`，未配置时 403） |
 | GET | `/api/health` | 健康检查 |
 | GET | `/ai/health` | AI 网关健康检查（含 Qdrant 连通性，始终 200） |
 | POST | `/ai/chat/stream` | AI 对话 SSE（需登录，`X-User-Id` 由 Nginx 透传）：`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error` |
@@ -348,13 +357,15 @@ GitStarts/
 
 `/ai/compare` 的 `cell` 包含：`dimensionKey` / `repoKey` / `value` / `confidence` 与 `evidence[]`（section、snippet、sourceUrl、chunkType）。没有证据的单元格固定为「信息不足」；`done` 返回落库的 `comparisonId`（未落库为 null），`cached=true` 表示命中缓存且未扣配额。
 
-服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`、`GET /api/internal/repos/search`、`GET /api/internal/repos/rank`、`GET /api/internal/repos/{fullName}`、`POST /api/internal/repos/batch`、`GET /api/internal/index/repos`、`POST /api/internal/repo-documents`、`POST /api/internal/index/mark`、`POST /api/internal/conversations`、`POST /api/internal/messages`、`GET|POST|PATCH /api/internal/ideas*`、`POST /api/internal/comparisons`、`GET /api/internal/auth/session`。
+服务间接口（`X-Internal-Token`，Nginx 对外 404）：`POST /api/internal/quota/reserve`、`GET /api/internal/repos/search`、`GET /api/internal/repos/rank`、`GET /api/internal/repos/{fullName}`、`POST /api/internal/repos/batch`、`GET /api/internal/index/repos`、`POST /api/internal/repo-documents`、`POST /api/internal/index/mark`、`POST /api/internal/conversations`、`POST /api/internal/messages`、`GET|POST|PATCH /api/internal/ideas*`、`POST /api/internal/comparisons`、`POST /api/internal/ai-metrics`、`GET /api/internal/auth/session`。
 
 个人中心页面：`/me`（配额、画像、推荐位与资产总览）、`/me/favorites`、`/me/ideas`、`/me/comparisons`、`/me/comparisons/{id}`、`/me/conversations`、`/me/conversations/{id}`。
 
+运维页面：`/ops`（成本看板：日请求 / token / P95 延迟 / 预算告警，仅 `OPS_GITHUB_LOGINS` 中的账号可见）。llm-service 在每个 chat / match / compare 请求结束时上报 `POST /api/internal/ai-metrics`，写入 `ai_metrics`；指标上报失败只记日志，不影响 SSE 主链路。
+
 ## 数据与索引
 
-- **MySQL**：`repositories`（仓库主表，含 `category`、`platform` / `platforms`、`latest_release_tag` / `latest_release_at`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `favorites`（收藏与备注，唯一键 `user_id + repo_id`）+ `users` / `conversations` / `messages` / `usage_daily` / `user_profiles`。
+- **MySQL**：`repositories`（仓库主表，含 `category`、`platform` / `platforms`、`latest_release_tag` / `latest_release_at`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `favorites`（收藏与备注，唯一键 `user_id + repo_id`）+ `users` / `conversations` / `messages` / `usage_daily` / `user_profiles` + `ai_metrics`（请求级 token、延迟、结果，供成本看板与告警）。
 - **Release 与多平台**：每天用 GitHub GraphQL 批量刷新 `latestRelease`（每批 50 个仓库，单次最多 1000 个）；`release_checked_at` 记录检查时间，无 Release 的仓库也记录，避免重复请求。`platforms` 由 topics / 描述 / 语言规则推导，供列表卡展示与匹配条件过滤使用。
 - **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。
 - **缓存**：匹配结果 10 分钟、对比结果 7 天、对比 checkpoint 1 小时、榜单与元数据 5 分钟；索引 worker 用 Redis 锁 + 游标实现断点续跑。

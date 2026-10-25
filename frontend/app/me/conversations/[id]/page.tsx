@@ -23,16 +23,17 @@ function formatTime(value?: string): string {
 export default async function ConversationDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const me = await fetchMe();
   if (!me) {
-    redirect(`/login?next=/me/conversations/${params.id}`);
+    redirect(`/login?next=/me/conversations/${id}`);
   }
-  if (!/^\d+$/.test(params.id)) {
+  if (!/^\d+$/.test(id)) {
     notFound();
   }
-  const detail = await fetchConversation(params.id);
+  const detail = await fetchConversation(id);
   if (!detail) {
     notFound();
   }

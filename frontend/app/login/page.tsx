@@ -9,13 +9,14 @@ import { safeNext } from '@/lib/client';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export default async function LoginPage({ searchParams }: PageProps) {
-  const rawNext = searchParams?.next;
+  const sp = await searchParams;
+  const rawNext = sp.next;
   const next = safeNext(typeof rawNext === 'string' ? rawNext : undefined);
-  const failed = searchParams?.error === 'oauth';
+  const failed = sp.error === 'oauth';
 
   const me = await fetchMe();
   if (me) {

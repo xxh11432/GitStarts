@@ -48,9 +48,9 @@ function buildTags(languages: FacetItem[], topics: FacetItem[]): RankTag[] {
 export default async function RankPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = searchParams ?? {};
+  const sp = await searchParams;
   const rawType = typeof sp.type === 'string' ? sp.type : '';
   const type: RankType = TABS.some((tab) => tab.key === rawType)
     ? (rawType as RankType)

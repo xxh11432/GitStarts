@@ -47,7 +47,7 @@ export function EvidenceLink({
         className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-primary transition-colors hover:text-primary/70"
       >
         {label} {count}
-        <ArrowUpRight className="size-3" />
+        <ArrowUpRight className="size-3" aria-hidden />
       </button>
     );
   }

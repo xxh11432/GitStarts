@@ -10,9 +10,10 @@ export const dynamic = 'force-dynamic';
 export default async function SharedComparisonPage({
   params,
 }: {
-  params: { token: string };
+  params: Promise<{ token: string }>;
 }) {
-  const shared = await fetchSharedComparison(params.token).catch(() => null);
+  const { token } = await params;
+  const shared = await fetchSharedComparison(token).catch(() => null);
   if (!shared) {
     notFound();
   }

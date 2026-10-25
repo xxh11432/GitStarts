@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import '@fontsource-variable/bricolage-grotesque';
-import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource-variable/bricolage-grotesque/wght.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
@@ -25,8 +25,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="flex min-h-screen flex-col bg-background text-foreground">
         <TooltipProvider delayDuration={200}>
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:border focus:border-border focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:text-foreground focus:shadow-lg"
+          >
+            跳到主要内容
+          </a>
           <Navbar />
-          <main className="mx-auto w-full max-w-container flex-1 px-4 pb-20 pt-8 sm:px-6 lg:px-8">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className="mx-auto w-full max-w-container flex-1 px-4 pb-20 pt-8 outline-none sm:px-6 lg:px-8"
+          >
             {children}
           </main>
           <footer className="border-t border-border">

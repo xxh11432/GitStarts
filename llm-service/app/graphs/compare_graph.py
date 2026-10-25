@@ -40,6 +40,7 @@ from app.schemas.compare import (
 )
 from app.schemas.match import Requirement
 from app.services.embedding import EmbeddingService
+from app.services.usage import UsageCollector
 from app.tools.doc_tools import DocToolExecutor, EvidenceHit, match_evidence
 
 logger = structlog.get_logger("compare_graph")
@@ -111,7 +112,9 @@ def canonical(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
-async def invoke_structured(llm: Any, schema: type, messages: list[Any]) -> Any:
+async def invoke_structured(
+    llm: Any, schema: type, messages: list[Any], usage: UsageCollector | None = None
+) -> Any:
     from langchain_core.messages import SystemMessage
 
     schema_hint = SystemMessage(
@@ -121,12 +124,13 @@ async def invoke_structured(llm: Any, schema: type, messages: list[Any]) -> Any:
             + json.dumps(schema.model_json_schema(by_alias=True), ensure_ascii=False)
         )
     )
+    config = {"callbacks": [usage]} if usage is not None else None
     last_error: Exception | None = None
     for method in ("json_schema", "json_mode", "function_calling"):
         try:
             runnable = llm.with_structured_output(schema, method=method)
             payload = [*messages, schema_hint] if method == "json_mode" else messages
-            return await runnable.ainvoke(payload)
+            return await runnable.ainvoke(payload, config=config)
         except Exception as exc:  # 部分供应商只支持 response_format=json_object
             last_error = exc
     raise CompareError(f"结构化输出失败：{type(last_error).__name__}", code="llm_failed")
@@ -194,6 +198,16 @@ class CompareRunner:
         self._llm = llm
         self._cache = cache
         self._docs = docs or DocToolExecutor(settings=settings, vector=vector, embedding=embedding)
+        self._usage = UsageCollector()
+        self.cached = False
+
+    @property
+    def tokens_in(self) -> int:
+        return self._usage.tokens_in
+
+    @property
+    def tokens_out(self) -> int:
+        return self._usage.tokens_out
 
     async def prepare(self, request: CompareRequest, *, user_id: int) -> PreparedCompare:
         repo_keys = _unique_repo_keys(request.repo_keys)
@@ -249,6 +263,7 @@ class CompareRunner:
         }
 
         if prepared.cached:
+            self.cached = True
             payload = prepared.cached
             yield CompareEvent("plan", {**plan_payload, "cached": True})
             for item in payload.get("cells", []):
@@ -352,14 +367,14 @@ class CompareRunner:
             ):
                 return Requirement.model_validate(structured), request.idea_id
             raw_text = str(idea.get("rawText") or "")
-            requirement = await parse_requirement(self._llm, raw_text)
+            requirement = await parse_requirement(self._llm, raw_text, usage=self._usage)
             await self._backend.update_idea(request.idea_id, requirement.model_dump())
             return requirement, request.idea_id
 
         raw_text = (request.raw_text or "").strip()
         if not raw_text:
             raise CompareError("请提供想法或 ideaId", code="empty_requirement")
-        requirement = await parse_requirement(self._llm, raw_text)
+        requirement = await parse_requirement(self._llm, raw_text, usage=self._usage)
         try:
             idea_id = await self._backend.create_idea(
                 user_id=user_id,
@@ -453,7 +468,7 @@ class CompareRunner:
             f"{_evidence_block(repo, data)}\n{_repo_block(repo)}",
         )
         try:
-            result = await invoke_structured(self._llm, RepoAnalysis, messages)
+            result = await invoke_structured(self._llm, RepoAnalysis, messages, self._usage)
         except CompareError:
             logger.warning("repo_analysis_failed", repo=repo_key)
             return RepoAnalysis()
@@ -503,7 +518,7 @@ class CompareRunner:
             f"{json.dumps(payload, ensure_ascii=False)}\n[/REPO_DATA]",
         )
         try:
-            result = await invoke_structured(self._llm, LlmRepoCells, messages)
+            result = await invoke_structured(self._llm, LlmRepoCells, messages, self._usage)
         except CompareError:
             logger.warning("compare_cells_failed", repo=repo_key)
             return fallback_cells(repo_key)
@@ -600,7 +615,7 @@ class CompareRunner:
             f"[MATRIX_DATA]\n{json.dumps(payload, ensure_ascii=False)}\n[/MATRIX_DATA]",
         )
         try:
-            result = await invoke_structured(self._llm, LlmVerdict, messages)
+            result = await invoke_structured(self._llm, LlmVerdict, messages, self._usage)
             parsed = result if isinstance(result, LlmVerdict) else LlmVerdict.model_validate(result)
         except CompareError:
             logger.warning("verdict_failed", repos=repo_keys)

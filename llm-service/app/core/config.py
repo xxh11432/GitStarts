@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     worker_heartbeat_minutes: int = 5
     github_token: str = ""
     github_api_base: str = "https://api.github.com"
+    # SSRF 白名单：仅允许向这些主机发起 README / manifest 抓取，逗号分隔
+    github_allowed_hosts: str = "api.github.com"
     github_timeout_seconds: float = 20.0
     github_max_retries: int = 3
     github_backoff_seconds: float = 1.0

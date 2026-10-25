@@ -20,13 +20,14 @@ function formatTime(value?: string): string {
 export default async function ComparisonsPage({
   searchParams,
 }: {
-  searchParams: { page?: string };
+  searchParams: Promise<{ page?: string }>;
 }) {
+  const sp = await searchParams;
   const me = await fetchMe();
   if (!me) {
     redirect('/login?next=/me/comparisons');
   }
-  const currentPage = Math.max(Number(searchParams.page) || 1, 1);
+  const currentPage = Math.max(Number(sp.page) || 1, 1);
   const data = await fetchMyComparisons(currentPage, PAGE_SIZE);
   const totalPages = Math.max(Math.ceil((data?.total ?? 0) / PAGE_SIZE), 1);
 
