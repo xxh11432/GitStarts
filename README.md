@@ -6,6 +6,7 @@
 
 从「GitHub 热门仓库聚合」升级为「输入想法 → 匹配开源项目 → AI 深读 → 横向对比 → 决策沉淀」的开源方案决策平台
 
+[![在线体验](https://img.shields.io/badge/🌐_在线体验-www.gitstars.cn-ff4fa3?logo=googlechrome&logoColor=white)](https://www.gitstars.cn/)
 [![Java](https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
