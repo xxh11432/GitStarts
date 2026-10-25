@@ -36,7 +36,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    mem_limit: ${MYSQL_MEM_LIMIT:-320m}
+    mem_limit: ${MYSQL_MEM_LIMIT:-224m}
     logging: *default-logging
 
   redis:
@@ -79,7 +79,7 @@ services:
     ports:
       - "6333:6333"
       - "6334:6334"
-    mem_limit: ${QDRANT_MEM_LIMIT:-320m}
+    mem_limit: ${QDRANT_MEM_LIMIT:-160m}
     logging: *default-logging
 
   backend:
@@ -272,7 +272,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - model-cache:/models
-    mem_limit: ${WORKER_MEM_LIMIT:-288m}
+    mem_limit: ${WORKER_MEM_LIMIT:-192m}
     logging: *default-logging
 
   frontend:
@@ -291,8 +291,9 @@ services:
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://backend:8080}
       NEXT_TELEMETRY_DISABLED: "1"
-      # 限制 Node 老年代，SSR 常驻 ~80 MB
-      NODE_OPTIONS: "--max-old-space-size=128"
+      # 限制 Node 老年代；SSR 页面单次输出可达 200+ KB，并发渲染实测需 ~300 MB，
+      # 128m 会在约 20 并发时堆溢出（FATAL ERROR: heap out of memory）并导致 502
+      NODE_OPTIONS: "--max-old-space-size=320"
     expose:
       - "3000"
     healthcheck:
@@ -301,7 +302,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    mem_limit: ${FRONTEND_MEM_LIMIT:-192m}
+    mem_limit: ${FRONTEND_MEM_LIMIT:-512m}
     logging: *default-logging
 
   nginx:
