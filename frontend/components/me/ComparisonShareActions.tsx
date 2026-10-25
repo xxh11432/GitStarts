@@ -91,7 +91,7 @@ export default function ComparisonShareActions({
   };
 
   return (
-    <section className="border border-border bg-card">
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
           Share &amp; manage / 分享与记录
@@ -109,9 +109,9 @@ export default function ComparisonShareActions({
               <Input
                 readOnly
                 value={`/compare/s/${token}`}
-                className="h-8 min-w-[220px] flex-1 rounded-none font-mono text-[11px]"
+                className="h-8 min-w-[220px] flex-1 rounded-lg font-mono text-[11px]"
               />
-              <Button type="button" variant="outline" size="sm" onClick={() => void copy()} className="rounded-none">
+              <Button type="button" variant="outline" size="sm" onClick={() => void copy()} className="rounded-lg">
                 <Copy className="size-3.5" data-icon="inline-start" />
                 复制链接
               </Button>
@@ -121,14 +121,14 @@ export default function ComparisonShareActions({
                 size="sm"
                 onClick={() => void revoke()}
                 disabled={busy}
-                className="rounded-none text-destructive hover:text-destructive"
+                className="rounded-lg text-destructive hover:text-destructive"
               >
                 <RotateCcw className="size-3.5" data-icon="inline-start" />
                 撤销分享
               </Button>
             </>
           ) : (
-            <Button type="button" size="sm" onClick={() => void share()} disabled={busy} className="rounded-none">
+            <Button type="button" size="sm" onClick={() => void share()} disabled={busy} className="rounded-lg">
               <Link2 className="size-3.5" data-icon="inline-start" />
               {busy ? '生成中…' : '生成只读分享链接'}
             </Button>
@@ -141,13 +141,13 @@ export default function ComparisonShareActions({
                 variant="destructive"
                 size="sm"
                 disabled={busy}
-                className="ml-auto rounded-none"
+                className="ml-auto rounded-lg"
               >
                 <Trash2 className="size-3.5" data-icon="inline-start" />
                 删除这条对比
               </Button>
             </AlertDialogTrigger>
-            <AlertDialogContent className="rounded-none">
+            <AlertDialogContent className="rounded-lg">
               <AlertDialogHeader>
                 <AlertDialogTitle className="font-display">删除这条对比记录？</AlertDialogTitle>
                 <AlertDialogDescription className="text-[12px] leading-relaxed">
@@ -155,10 +155,10 @@ export default function ComparisonShareActions({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="rounded-none">取消</AlertDialogCancel>
+                <AlertDialogCancel className="rounded-lg">取消</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => void remove()}
-                  className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   确认删除
                 </AlertDialogAction>

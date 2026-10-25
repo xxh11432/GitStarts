@@ -54,14 +54,14 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
             {result.cached ? ' · 命中缓存' : ''}
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={download} className="rounded-none">
+        <Button type="button" variant="outline" size="sm" onClick={download} className="rounded-lg">
           <Download className="size-3.5" data-icon="inline-start" />
           导出 Markdown
         </Button>
       </div>
 
       {result.degraded ? (
-        <Alert className="rounded-none border-info/40 bg-info/5 px-4 py-3 text-info">
+        <Alert className="rounded-lg border-info/40 bg-info/5 px-4 py-3 text-info">
           <AlertDescription className="text-xs text-info">
             本次对比有部分仓库或维度降级为「信息不足」，建议打开原文人工确认。
           </AlertDescription>
@@ -72,7 +72,7 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
         横向滑动查看全部仓库 →
       </p>
 
-      <div className="overflow-x-auto border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="w-full min-w-[820px] border-collapse text-left">
           <thead>
             <tr className="border-b border-border bg-muted">
@@ -93,7 +93,7 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
                       {[repo.language, repo.license].filter(Boolean).join(' · ') || '元数据不足'}
                     </p>
                     {recommended ? (
-                      <span className="mt-2 inline-flex items-center gap-1 border border-primary/40 bg-primary/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-primary">
+                      <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-primary">
                         <Check className="size-2.5" aria-hidden />
                         推荐
                       </span>
@@ -135,7 +135,7 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
                       <span className="text-sm font-medium text-foreground">{dimension.label}</span>
                     </div>
                     {hasDiff ? (
-                      <span className="mt-2 inline-block border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-primary">
+                      <span className="mt-2 inline-block rounded-full border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-primary">
                         差异
                       </span>
                     ) : null}
@@ -211,16 +211,16 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-4 flex flex-col gap-4">
-                <p className="whitespace-pre-wrap border border-border bg-muted px-3 py-2 text-sm leading-relaxed text-foreground">
+                <p className="whitespace-pre-wrap rounded-lg border border-border bg-muted px-3 py-2 text-sm leading-relaxed text-foreground">
                   {active.value}
                 </p>
                 {active.evidence.map((item, index) => (
-                  <article key={`${item.section}-${index}`} className="border border-border bg-card p-3">
+                  <article key={`${item.section}-${index}`} className="rounded-lg border border-border bg-card p-3">
                     <div className="flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
                       <span className="text-foreground">
                         E{String(index + 1).padStart(2, '0')} · § {item.section}
                       </span>
-                      <span className="border border-border px-1.5 py-0.5">
+                      <span className="rounded-full border border-border px-1.5 py-0.5">
                         {item.chunkType === 'manifest' ? 'manifest' : 'README'}
                       </span>
                     </div>
@@ -256,7 +256,7 @@ export default function CompareMatrix({ result }: { result: CompareResultView })
 function VerdictCard({ result }: { result: CompareResultView }) {
   const { verdict } = result;
   return (
-    <section className="border-2 border-primary/30 bg-card">
+    <section className="overflow-hidden rounded-xl border-2 border-primary/30 bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2.5">
         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-primary">
           Verdict / 结论建议

@@ -265,7 +265,7 @@ export default function CompareWorkbench({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="border border-border bg-card">
+      <section className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
           <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
             Case setup / 对比对象
@@ -281,7 +281,7 @@ export default function CompareWorkbench({
               {repos.map((repo) => (
                 <span
                   key={repo}
-                  className="inline-flex items-center gap-1.5 border border-border bg-background px-2.5 py-1 font-mono text-[11px] text-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 font-mono text-[11px] text-foreground"
                 >
                   {repo}
                   <button
@@ -314,7 +314,7 @@ export default function CompareWorkbench({
                 }}
                 disabled={busy || repos.length >= 4}
                 placeholder="owner/name，例如 langgenius/dify"
-                className="h-9 rounded-none font-mono text-[12px]"
+                className="h-9 rounded-lg font-mono text-[12px]"
               />
               <Button
                 type="button"
@@ -322,7 +322,7 @@ export default function CompareWorkbench({
                 size="sm"
                 onClick={() => addRepo(repoInput)}
                 disabled={busy || !repoInput.trim() || repos.length >= 4}
-                className="h-9 shrink-0 rounded-none"
+                className="h-9 shrink-0 rounded-lg"
               >
                 <Plus className="size-3.5" data-icon="inline-start" />
                 添加
@@ -362,7 +362,7 @@ export default function CompareWorkbench({
                   ? '可留空，直接使用匹配记录里的需求'
                   : '例如：团队要私有部署知识库，必须支持 Docker 与中文全文检索'
               }
-              className="min-h-[96px] resize-none rounded-none text-sm leading-relaxed"
+              className="min-h-[96px] resize-none rounded-lg text-sm leading-relaxed"
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -380,7 +380,7 @@ export default function CompareWorkbench({
                 </Label>
               </div>
               {phase === 'streaming' ? (
-                <Button type="button" variant="outline" size="sm" onClick={stop} className="rounded-none">
+                <Button type="button" variant="outline" size="sm" onClick={stop} className="rounded-lg">
                   停止
                 </Button>
               ) : (
@@ -388,7 +388,7 @@ export default function CompareWorkbench({
                   type="submit"
                   size="sm"
                   disabled={busy || repos.length < 2 || (!ideaId && !rawText.trim())}
-                  className="rounded-none"
+                  className="rounded-lg"
                 >
                   开始对比
                   <ArrowUpRight className="size-3.5" data-icon="inline-end" />
@@ -402,14 +402,14 @@ export default function CompareWorkbench({
       {error ? (
         <Alert
           variant="destructive"
-          className="rounded-none border-destructive/40 bg-destructive/5 px-4 py-3"
+          className="rounded-lg border-destructive/40 bg-destructive/5 px-4 py-3"
         >
           <AlertDescription className="text-xs">{error}</AlertDescription>
         </Alert>
       ) : null}
 
       {phase === 'streaming' ? (
-        <div className="border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-primary">
               {plan ? 'Generating cells' : 'Preparing comparison'}
@@ -420,14 +420,14 @@ export default function CompareWorkbench({
           </div>
           <Progress
             value={expected > 0 ? Math.round((ready / expected) * 100) : 0}
-            className="mt-2 h-1.5 rounded-none bg-muted"
+            className="mt-2 h-1.5 rounded-lg bg-muted"
           />
         </div>
       ) : null}
 
       {initialComparison && !plan && phase === 'idle' ? (
         <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 border border-primary/40 bg-primary/5 px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
             <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-primary">
               上次对比结果 · #{initialComparison.id}
             </span>
@@ -442,7 +442,7 @@ export default function CompareWorkbench({
       {result ? <CompareMatrix result={result} /> : null}
 
       {!plan && !done && phase === 'idle' && !error && !initialComparison ? (
-        <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+        <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
           {[
             ['01', '选择仓库', '2–4 个候选，支持 owner/name 或 GitHub 链接。'],
             ['02', '描述需求', '从匹配记录带入，或直接粘贴场景与硬条件。'],
@@ -460,7 +460,7 @@ export default function CompareWorkbench({
       ) : null}
 
       {done ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
             {done.tookMs} ms{done.cached ? ' · cached (not billed)' : ''}
           </span>
@@ -472,7 +472,7 @@ export default function CompareWorkbench({
                 size="sm"
                 onClick={() => void share()}
                 disabled={busy}
-                className="rounded-none"
+                className="rounded-lg"
               >
                 {phase === 'sharing' ? '生成分享链接…' : '生成只读分享链接'}
               </Button>
@@ -487,7 +487,7 @@ export default function CompareWorkbench({
                 onClick={() => {
                   window.open(shareUrl, '_blank', 'noopener,noreferrer');
                 }}
-                className="inline-flex items-center gap-1 border border-primary/40 bg-primary/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-primary hover:bg-primary/10"
+                className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-primary hover:bg-primary/10"
               >
                 {copied ? '已复制 · 打开分享' : '打开分享链接'}
                 <ArrowUpRight className="size-3" aria-hidden />

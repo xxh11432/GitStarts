@@ -5,10 +5,12 @@ import EmptyState from '@/components/empty-state';
 import ExamplePrompts, { type ExamplePrompt } from '@/components/ExamplePrompts';
 import HeroComposer from '@/components/HeroComposer';
 import Metric from '@/components/metric';
+import RankRow from '@/components/rank-row';
 import RepoCard from '@/components/repo-card';
 import SampleDossier from '@/components/sample-dossier';
 import SectionHeading from '@/components/section-heading';
 import { fetchMeta, fetchRank, fetchRepos } from '@/lib/api';
+import type { Repo } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +21,53 @@ const examples: ExamplePrompt[] = [
   { label: '中文全文检索', query: '检索' },
 ];
 
+/** 首页榜单速览：从排行榜中挑出总榜、本周活跃与新晋榜的头部条目。 */
+function MiniRank({
+  index,
+  title,
+  href,
+  items,
+}: {
+  index: string;
+  title: string;
+  href: string;
+  items: Repo[];
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2.5">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] text-muted-foreground">{index}</span>
+          <h3 className="text-[13px] font-medium text-foreground">{title}</h3>
+        </div>
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-primary"
+        >
+          查看榜单
+          <ArrowUpRight className="size-3" aria-hidden />
+        </Link>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-3 py-6 text-center text-[11px] text-muted-foreground">暂无榜单数据</p>
+      ) : (
+        <ol>
+          {items.map((repo, i) => (
+            <li key={repo.id}>
+              <RankRow repo={repo} rank={i + 1} compact />
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 export default async function HomePage() {
-  const [hotRepos, recentResult, meta, counter] = await Promise.all([
+  const [hotRepos, weeklyRepos, newRepos, recentResult, meta, counter] = await Promise.all([
     fetchRank('total', undefined, 8),
+    fetchRank('weekly', undefined, 5),
+    fetchRank('new', undefined, 5),
     fetchRepos({ sort: 'pushed', order: 'desc', page: 1, size: 6 }),
     fetchMeta(),
     fetchRepos({ page: 1, size: 1 }),
@@ -29,7 +75,7 @@ export default async function HomePage() {
 
   return (
     <div className="flex flex-col gap-14 sm:gap-16">
-      <section className="relative overflow-hidden border border-border bg-card">
+      <section className="relative overflow-hidden rounded-xl border border-border bg-card">
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-dots-soft opacity-70" />
         <div className="relative grid gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:px-10 lg:py-14">
           <div className="stagger flex flex-col gap-6">
@@ -61,7 +107,7 @@ export default async function HomePage() {
       </section>
 
       <section aria-label="站点统计">
-        <dl className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
           <div className="bg-card">
             <Metric label="已收录仓库" value={counter.total} />
           </div>
@@ -77,9 +123,23 @@ export default async function HomePage() {
         </dl>
       </section>
 
+      <section className="flex flex-col gap-4">
+        <SectionHeading index="02" title="排行榜速览" href="/rank" actionLabel="进入排行榜" />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <MiniRank index="A" title="总星标榜" href="/rank?type=total" items={hotRepos.slice(0, 5)} />
+          <MiniRank
+            index="B"
+            title="本周活跃榜"
+            href="/rank?type=weekly"
+            items={weeklyRepos}
+          />
+          <MiniRank index="C" title="新晋榜" href="/rank?type=new" items={newRepos} />
+        </div>
+      </section>
+
       {meta.platforms.length > 0 ? (
         <section className="flex flex-col gap-4">
-          <SectionHeading index="02" title="按平台浏览" href="/repos" actionLabel="全部平台" />
+          <SectionHeading index="03" title="按平台浏览" href="/repos" actionLabel="全部平台" />
           <div className="flex flex-wrap gap-2">
             {meta.platforms
               .filter((platform) => platform.slug !== 'other')
@@ -88,7 +148,7 @@ export default async function HomePage() {
                 <Link
                   key={platform.slug}
                   href={`/repos?platform=${encodeURIComponent(platform.slug)}`}
-                  className="inline-flex items-center gap-2 border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 >
                   {platform.name}
                   <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
@@ -102,13 +162,13 @@ export default async function HomePage() {
 
       {meta.categories.length > 0 ? (
         <section className="flex flex-col gap-4">
-          <SectionHeading index="03" title="按分类浏览" href="/repos" actionLabel="全部分类" />
+          <SectionHeading index="04" title="按分类浏览" href="/repos" actionLabel="全部分类" />
           <div className="flex flex-wrap gap-2">
             {meta.categories.slice(0, 12).map((category) => (
               <Link
                 key={category.slug}
                 href={`/repos?category=${encodeURIComponent(category.slug)}`}
-                className="inline-flex items-center gap-2 border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
               >
                 {category.name}
                 <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
@@ -122,7 +182,7 @@ export default async function HomePage() {
 
       <section className="flex flex-col gap-2">
         <SectionHeading
-          index="04"
+          index="05"
           title="热门开源项目"
           count={hotRepos.length}
           href="/repos"
@@ -141,7 +201,7 @@ export default async function HomePage() {
 
       <section className="flex flex-col gap-2">
         <SectionHeading
-          index="05"
+          index="06"
           title="最近更新"
           count={recentResult.items.length}
           href="/repos?sort=pushedAt&order=desc"

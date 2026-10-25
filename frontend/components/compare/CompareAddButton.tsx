@@ -60,7 +60,7 @@ export default function CompareAddButton({
       size="sm"
       onClick={onClick}
       aria-pressed={inBasket}
-      className="rounded-none"
+      className="rounded-lg"
     >
       {inBasket ? (
         <Check className="size-3.5" data-icon="inline-start" />

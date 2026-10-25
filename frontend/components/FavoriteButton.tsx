@@ -57,7 +57,7 @@ export default function FavoriteButton({
         onClick={toggle}
         disabled={busy}
         aria-pressed={favorited}
-        className="rounded-none"
+        className="rounded-lg"
       >
         <Bookmark
           className={cn('size-3.5', favorited && 'fill-current')}

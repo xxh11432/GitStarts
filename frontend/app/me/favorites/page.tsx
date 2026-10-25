@@ -32,7 +32,7 @@ export default async function FavoritesPage({
         title="收藏与备注"
         description="收藏保存在账号下，换设备或重新登录后仍然可见。"
         actions={
-          <Button asChild variant="ghost" size="sm" className="rounded-none">
+          <Button asChild variant="ghost" size="sm" className="rounded-lg">
             <Link href="/me">返回个人中心</Link>
           </Button>
         }

@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils';
 const ITEMS = [
   { href: '/', label: '首页', index: '00' },
   { href: '/repos', label: '仓库', index: '01' },
-  { href: '/match', label: '语义匹配', index: '02' },
-  { href: '/compare', label: '深度对比', index: '03' },
+  { href: '/rank', label: '排行榜', index: '02' },
+  { href: '/match', label: '语义匹配', index: '03' },
+  { href: '/compare', label: '深度对比', index: '04' },
 ];
 
 export default function NavLinks() {

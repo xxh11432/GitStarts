@@ -16,7 +16,7 @@ export default function ExamplePrompts({ items }: { items: ExamplePrompt[] }) {
         <Link
           key={item.label}
           href={`/repos?q=${encodeURIComponent(item.query)}`}
-          className="inline-flex items-center gap-1 border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+          className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
         >
           {item.label}
           <ArrowUpRight className="size-3" aria-hidden />

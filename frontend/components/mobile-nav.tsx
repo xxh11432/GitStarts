@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, History, Home, Menu, MessageSquare, Scale, Sparkles, User } from 'lucide-react';
+import { Bookmark, History, Home, Menu, MessageSquare, Scale, Sparkles, Trophy, User } from 'lucide-react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import LoginButton from './LoginButton';
 const LINKS = [
   { href: '/', label: '首页', icon: Home },
   { href: '/repos', label: '仓库', icon: Bookmark },
+  { href: '/rank', label: '排行榜', icon: Trophy },
   { href: '/match', label: '语义匹配', icon: Sparkles },
   { href: '/compare', label: '深度对比', icon: Scale },
 ];
@@ -88,9 +89,9 @@ export default function MobileNav({
           {authenticated ? (
             <div className="border-t border-border pt-4">
               <div className="mb-3 flex items-center gap-3">
-                <Avatar className="size-9 rounded-none">
+                <Avatar className="size-9 rounded-lg">
                   {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
-                  <AvatarFallback className="rounded-none bg-primary text-primary-foreground">
+                  <AvatarFallback className="rounded-lg bg-primary text-primary-foreground">
                     {(nickname ?? '我').slice(0, 1)}
                   </AvatarFallback>
                 </Avatar>

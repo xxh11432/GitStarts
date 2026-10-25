@@ -43,7 +43,7 @@ export default async function ConversationsPage({
         title="与 AI 的对话"
         description="会话按账号保存，重新登录后仍可回看。"
         actions={
-          <Button asChild variant="ghost" size="sm" className="rounded-none">
+          <Button asChild variant="ghost" size="sm" className="rounded-lg">
             <Link href="/me">返回个人中心</Link>
           </Button>
         }
@@ -55,7 +55,7 @@ export default async function ConversationsPage({
             <Link
               key={item.id}
               href={`/me/conversations/${item.id}`}
-              className="group flex items-start gap-3 border border-border bg-card p-4 transition-colors hover:border-primary/40"
+              className="group flex items-start gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
               <span className="pt-0.5 font-mono text-[10px] text-muted-foreground">
                 {String(index + 1).padStart(2, '0')}
@@ -70,7 +70,7 @@ export default async function ConversationsPage({
                 </p>
               </div>
               {item.ideaId ? (
-                <span className="shrink-0 border border-border bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                <span className="shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
                   想法 #{item.ideaId}
                 </span>
               ) : null}
@@ -86,7 +86,7 @@ export default async function ConversationsPage({
           title="还没有会话记录"
           description="回首页向 AI 描述你的需求，对话会自动保存。"
           action={
-            <Button asChild variant="outline" size="sm" className="rounded-none">
+            <Button asChild variant="outline" size="sm" className="rounded-lg">
               <Link href="/">回首页开始对话</Link>
             </Button>
           }

@@ -59,7 +59,7 @@ export default function CommandMenu() {
       >
         <Search className="size-3.5" aria-hidden />
         <span className="hidden lg:inline">搜索仓库</span>
-        <kbd className="ml-1 hidden border border-border bg-muted px-1 py-0.5 font-mono text-[9px] tracking-wider lg:inline">
+        <kbd className="ml-1 hidden rounded-md border border-border bg-muted px-1 py-0.5 font-mono text-[9px] tracking-wider lg:inline">
           ⌘K
         </kbd>
       </Button>

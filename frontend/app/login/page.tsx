@@ -24,7 +24,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 pt-8 sm:pt-16">
-      <section className="border border-border bg-card shadow-hard">
+      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-hard">
         <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-2.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             Access / 登录
@@ -43,14 +43,14 @@ export default async function LoginPage({ searchParams }: PageProps) {
           </div>
 
           {failed ? (
-            <Alert variant="destructive" className="rounded-none border-destructive/40 bg-destructive/5 px-3 py-2">
+            <Alert variant="destructive" className="rounded-lg border-destructive/40 bg-destructive/5 px-3 py-2">
               <AlertDescription className="text-xs">GitHub 登录未完成，请重试。</AlertDescription>
             </Alert>
           ) : null}
 
           <LoginButton next={next} className="w-full" />
 
-          <p className="border border-border bg-muted px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="rounded-lg border border-border bg-muted px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
             每日额度按账号重置，登录后可在「我的」页面查看剩余次数。
           </p>
 

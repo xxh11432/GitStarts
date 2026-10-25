@@ -107,7 +107,7 @@ function renderBlocks(content: string): ReactNode[] {
       blocks.push(
         <pre
           key={`code-${key++}`}
-          className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-relaxed"
+          className="overflow-x-auto rounded-lg border border-border bg-muted p-3 text-xs leading-relaxed"
         >
           <code className="font-mono">{codeLines.join('\n')}</code>
         </pre>,

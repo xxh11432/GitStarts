@@ -4,6 +4,7 @@ import LoginButton from './LoginButton';
 import MobileNav from './mobile-nav';
 import CommandMenu from './command-menu';
 import NavLinks from './nav-links';
+import ThemeToggle from './theme-toggle';
 import UserMenu from './UserMenu';
 import { fetchMe } from '@/lib/api';
 
@@ -15,9 +16,13 @@ export default async function Navbar() {
     <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div className="mx-auto flex h-14 max-w-container items-center gap-3 px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="GitStars 首页">
-          <span className="grid size-6 place-items-center border border-foreground/60 bg-primary font-mono text-[10px] font-medium text-primary-foreground">
-            GS
-          </span>
+          <img
+            src="/icon.svg"
+            alt=""
+            width={26}
+            height={26}
+            className="size-[26px] shrink-0 rounded-[7px]"
+          />
           <span className="font-display text-[15px] font-semibold tracking-tight text-foreground">
             GitStars
           </span>
@@ -31,6 +36,7 @@ export default async function Navbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <ThemeToggle />
           <CommandMenu />
           {me ? (
             <UserMenu nickname={nickname} avatarUrl={me.avatarUrl} />

@@ -66,7 +66,7 @@ export default function CandidateCard({
   const fitPercent = Math.round(candidate.fit * 100);
 
   return (
-    <article className={cn('border bg-card', selected ? 'border-primary/60' : 'border-border')}>
+    <article className={cn('overflow-hidden rounded-xl border bg-card', selected ? 'border-primary/60' : 'border-border')}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           Candidate {String((index ?? 0) + 1).padStart(2, '0')}
@@ -109,8 +109,8 @@ export default function CandidateCard({
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
             {repo.language ? <span>{repo.language}</span> : null}
             {repo.license ? <span>{repo.license}</span> : null}
-            {repo.category ? <span className="border border-border px-1.5 py-0.5">{repo.category}</span> : null}
-            {platform ? <span className="border border-border px-1.5 py-0.5">{platform}</span> : null}
+            {repo.category ? <span className="rounded-full border border-border px-1.5 py-0.5">{repo.category}</span> : null}
+            {platform ? <span className="rounded-full border border-border px-1.5 py-0.5">{platform}</span> : null}
           </div>
         </div>
 
@@ -143,7 +143,7 @@ export default function CandidateCard({
                   <li
                     key={`${condition.key}-${conditionIndex}`}
                     className={cn(
-                      'inline-flex items-center gap-1 border px-2 py-0.5 font-mono text-[10px]',
+                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px]',
                       meta.className,
                     )}
                   >
@@ -202,7 +202,7 @@ export default function CandidateCard({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="w-full justify-between rounded-none px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                className="w-full justify-between rounded-lg px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
               >
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
                   Evidence / README 证据（{candidate.evidence.length}）
@@ -243,7 +243,7 @@ export default function CandidateCard({
 
       <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-2.5">
         <CompareAddButton fullName={repo.fullName} ideaId={ideaId} />
-        <Button asChild variant="outline" size="sm" className="rounded-none">
+        <Button asChild variant="outline" size="sm" className="rounded-lg">
           <Link href={`/repos/${repo.fullName}`}>查看仓库详情</Link>
         </Button>
       </div>

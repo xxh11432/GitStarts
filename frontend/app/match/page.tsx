@@ -29,7 +29,7 @@ export default async function MatchPage() {
           </p>
         }
         actions={
-          <Button asChild variant="outline" size="sm" className="rounded-none">
+          <Button asChild variant="outline" size="sm" className="rounded-lg">
             <Link href="/compare">
               直接去对比
               <ArrowUpRight className="size-3.5" data-icon="inline-end" />
@@ -41,7 +41,7 @@ export default async function MatchPage() {
       <div className="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="order-2 flex flex-col gap-4 md:order-1">
           <QuotaBadge initial={me.quota} />
-          <section className="border border-border bg-card p-4">
+          <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
               How to read / 怎么读结果
             </h2>

@@ -28,7 +28,7 @@ function QuotaRow({ label, view }: { label: string; view: QuotaView }) {
       <Progress
         value={percent}
         className={cn(
-          'mt-2 h-1.5 rounded-none bg-muted',
+          'mt-2 h-1.5 rounded-lg bg-muted',
           nearLimit && '[&>div]:bg-destructive',
         )}
       />
@@ -67,14 +67,14 @@ export default function QuotaBadge({ initial }: { initial?: Quota }) {
 
   if (!quota) {
     return (
-      <div className="border border-border bg-card px-4 py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="rounded-xl border border-border bg-card px-4 py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
         {error ?? '读取配额中…'}
       </div>
     );
   }
 
   return (
-    <section className="border border-border bg-card p-4">
+    <section className="rounded-xl border border-border bg-card p-4">
       <div className="mb-4 flex items-baseline justify-between gap-2 border-b border-border pb-2">
         <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
           Quota / 今日额度

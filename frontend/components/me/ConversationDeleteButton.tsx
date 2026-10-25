@@ -41,12 +41,12 @@ export default function ConversationDeleteButton({ conversationId }: { conversat
     <div className="flex flex-col items-end gap-1">
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogTrigger asChild>
-          <Button type="button" variant="destructive" size="sm" className="rounded-none">
+          <Button type="button" variant="destructive" size="sm" className="rounded-lg">
             <Trash2 className="size-3.5" data-icon="inline-start" />
             删除会话
           </Button>
         </AlertDialogTrigger>
-        <AlertDialogContent className="rounded-none">
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display">删除这条会话？</AlertDialogTitle>
             <AlertDialogDescription className="text-[12px] leading-relaxed">
@@ -54,11 +54,11 @@ export default function ConversationDeleteButton({ conversationId }: { conversat
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-none">取消</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-lg">取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void remove()}
               disabled={busy}
-              className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {busy ? '删除中…' : '确认删除'}
             </AlertDialogAction>

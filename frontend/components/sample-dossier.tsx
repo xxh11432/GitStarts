@@ -5,12 +5,12 @@ import VerdictStamp from '@/components/verdict-stamp';
 
 export default function SampleDossier() {
   return (
-    <section className="relative flex flex-col gap-4 border border-border bg-background p-5 shadow-hard">
+    <section className="relative flex flex-col gap-4 rounded-xl border border-border bg-background p-5 shadow-hard">
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           Exhibit 01 · 示例档案
         </span>
-        <span className="border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+        <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
           Sample
         </span>
       </div>
@@ -40,7 +40,7 @@ export default function SampleDossier() {
         <Condition status="unknown" label="中文全文检索" />
       </div>
 
-      <blockquote className="border-l-2 border-highlight bg-highlight/10 px-3 py-2 text-xs leading-relaxed text-foreground">
+      <blockquote className="rounded-r-md border-l-2 border-highlight bg-highlight/10 px-3 py-2 text-xs leading-relaxed text-foreground">
         “Supports Docker Compose deployment and a built-in RAG pipeline for
         <span className="marker"> full-text retrieval</span>.”
       </blockquote>
@@ -57,7 +57,7 @@ export default function SampleDossier() {
 
 function Condition({ status, label }: { status: 'hit' | 'unknown'; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
       {status === 'hit' ? (
         <Check className="size-3 text-primary" aria-hidden />
       ) : (

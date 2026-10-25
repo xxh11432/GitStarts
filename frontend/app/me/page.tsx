@@ -71,12 +71,12 @@ export default async function MePage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="min-w-0 border border-border bg-card">
+      <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex items-center gap-4 p-5">
-            <Avatar className="size-16 rounded-none">
+            <Avatar className="size-16 rounded-lg">
               {me.avatarUrl ? <AvatarImage src={me.avatarUrl} alt="" /> : null}
-              <AvatarFallback className="rounded-none bg-primary font-display text-2xl text-primary-foreground">
+              <AvatarFallback className="rounded-lg bg-primary font-display text-2xl text-primary-foreground">
                 {(me.nickname ?? '我').slice(0, 1)}
               </AvatarFallback>
             </Avatar>
@@ -110,7 +110,7 @@ export default async function MePage() {
 
       <section className="flex flex-col gap-3">
         <SectionHeading index="03" title="我的资产" />
-        <div className="grid gap-px border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
           {assets.map((asset) => (
             <Link
               key={asset.title}
@@ -136,7 +136,7 @@ export default async function MePage() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="min-w-0 border border-border bg-card">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
             <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
               Recent comparisons / 最近对比
@@ -155,7 +155,7 @@ export default async function MePage() {
                   <li key={item.id}>
                     <Link
                       href={`/me/comparisons/${item.id}`}
-                      className="group flex min-w-0 items-start gap-3 border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
+                      className="group flex min-w-0 items-start gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
                     >
                       <span className="font-mono text-[10px] text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}
@@ -179,7 +179,7 @@ export default async function MePage() {
           </div>
         </section>
 
-        <section className="min-w-0 border border-border bg-card">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
             <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
               Recent conversations / 最近会话
@@ -198,7 +198,7 @@ export default async function MePage() {
                   <li key={item.id}>
                     <Link
                       href={`/me/conversations/${item.id}`}
-                      className="group flex min-w-0 items-start gap-3 border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
+                      className="group flex min-w-0 items-start gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
                     >
                       <span className="font-mono text-[10px] text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}

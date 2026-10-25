@@ -64,7 +64,7 @@ export default async function ReposPage({ searchParams }: PageProps) {
           </p>
         }
         actions={
-          <Button asChild variant="outline" size="sm" className="rounded-none">
+          <Button asChild variant="outline" size="sm" className="rounded-lg">
             <Link href="/match">用需求找仓库</Link>
           </Button>
         }
@@ -87,7 +87,7 @@ export default async function ReposPage({ searchParams }: PageProps) {
                   重置筛选
                 </Link>
               ) : null}
-              <div className="inline-flex border border-border">
+              <div className="inline-flex overflow-hidden rounded-lg border border-border">
                 {[
                   { key: 'grid', label: '卡片' },
                   { key: 'list', label: '列表' },
@@ -122,7 +122,7 @@ export default async function ReposPage({ searchParams }: PageProps) {
               }
               action={
                 hasFilters || outOfRange ? (
-                  <Button asChild variant="outline" size="sm" className="rounded-none">
+                  <Button asChild variant="outline" size="sm" className="rounded-lg">
                     <Link href={outOfRange ? pageHref(filters, totalPages) : '/repos'}>
                       {outOfRange ? '回到最后一页' : '清除筛选条件'}
                     </Link>
@@ -142,7 +142,7 @@ export default async function ReposPage({ searchParams }: PageProps) {
               ))}
             </div>
           ) : (
-            <div className="border border-border bg-background px-4">
+            <div className="rounded-xl border border-border bg-background px-4">
               {result.items.map((repo) => (
                 <RepoRow key={repo.id} repo={repo} />
               ))}
@@ -211,7 +211,7 @@ function PageLink({
   if (disabled) {
     return (
       <span
-        className="inline-flex items-center gap-1 border border-border px-3 py-1.5 text-xs text-muted-foreground opacity-50"
+        className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground opacity-50"
         aria-disabled
       >
         {children}
@@ -219,7 +219,7 @@ function PageLink({
     );
   }
   return (
-    <Button asChild variant="outline" size="sm" className="rounded-none">
+    <Button asChild variant="outline" size="sm" className="rounded-lg">
       <Link href={href}>{children}</Link>
     </Button>
   );

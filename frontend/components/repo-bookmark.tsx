@@ -57,7 +57,7 @@ export default function RepoBookmarkButton({
       disabled={busy}
       aria-label={favorited ? `取消收藏 ${fullName}` : `收藏 ${fullName}`}
       aria-pressed={favorited}
-      className="size-7 rounded-none text-muted-foreground hover:text-primary"
+      className="size-7 rounded-lg text-muted-foreground hover:text-primary"
     >
       <Bookmark className={cn('size-3.5', favorited && 'fill-current text-primary')} aria-hidden />
     </Button>

@@ -21,7 +21,7 @@ export default async function SharedComparisonPage({
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-4 border-b border-border pb-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 border border-primary/40 bg-primary/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-primary">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-primary">
             <Lock className="size-3" aria-hidden />
             Shared dossier / 只读分享
           </span>

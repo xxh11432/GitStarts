@@ -180,7 +180,7 @@ export default function HeroComposer() {
           {messages.map((message, index) =>
             message.role === 'user' ? (
               <div key={index} className="flex justify-end">
-                <div className="max-w-[88%] border border-border bg-muted px-4 py-2.5">
+                <div className="max-w-[88%] rounded-2xl border border-border bg-muted px-4 py-2.5">
                   <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
                     Request
                   </p>
@@ -190,7 +190,7 @@ export default function HeroComposer() {
                 </div>
               </div>
             ) : (
-              <article key={index} className="border border-border bg-background">
+              <article key={index} className="overflow-hidden rounded-xl border border-border bg-background">
                 <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2">
                   <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-primary">
                     Analysis / 证据回答
@@ -227,7 +227,7 @@ export default function HeroComposer() {
       {error ? (
         <Alert
           variant="destructive"
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-none border-destructive/40 bg-destructive/5 px-3 py-2"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-destructive/40 bg-destructive/5 px-3 py-2"
         >
           <AlertDescription className="text-xs">{error}</AlertDescription>
           {canRetry ? (
@@ -241,7 +241,7 @@ export default function HeroComposer() {
 
       <form
         onSubmit={submit}
-        className="border border-border bg-card shadow-hard transition-colors focus-within:border-primary/60"
+        className="overflow-hidden rounded-xl border border-border bg-card shadow-hard transition-colors focus-within:border-primary/60"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2">
           <label
@@ -267,7 +267,7 @@ export default function HeroComposer() {
           rows={3}
           maxLength={4000}
           placeholder="例如：帮我找一个可 Docker 自托管、MIT 协议的中文全文检索知识库"
-          className="min-h-[96px] resize-none rounded-none border-0 bg-transparent px-4 py-3 text-body text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
+          className="min-h-[96px] resize-none rounded-lg border-0 bg-transparent px-4 py-3 text-body text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2.5">
           <p className="text-[11px] leading-relaxed text-muted-foreground">

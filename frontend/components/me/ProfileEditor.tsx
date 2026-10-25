@@ -52,11 +52,11 @@ function TagField({
           {hint}
         </span>
       </div>
-      <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 border border-border bg-background px-2 py-1.5 focus-within:border-primary">
+      <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 focus-within:border-primary">
         {values.map((value) => (
           <span
             key={value}
-            className="inline-flex items-center gap-1 border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[10px] text-primary"
+            className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[10px] text-primary"
           >
             {value}
             <button
@@ -116,7 +116,7 @@ export default function ProfileEditor({ initial }: { initial: Profile }) {
   };
 
   return (
-    <section className="border border-border bg-card">
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
         <div>
           <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
@@ -126,7 +126,7 @@ export default function ProfileEditor({ initial }: { initial: Profile }) {
             用于个性化推荐位，仅自己可见；输入后按回车或逗号添加。
           </p>
         </div>
-        <Button type="button" size="sm" onClick={submit} disabled={busy} className="rounded-none">
+        <Button type="button" size="sm" onClick={submit} disabled={busy} className="rounded-lg">
           {busy ? '保存中…' : '保存画像'}
         </Button>
       </div>

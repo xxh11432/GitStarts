@@ -79,7 +79,7 @@ function ChipGroup({
         <ToggleGroupItem
           key={item.value}
           value={item.value}
-          className="h-auto rounded-none border border-border bg-background px-2.5 py-1 text-xs font-normal text-muted-foreground data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          className="h-auto rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-normal text-muted-foreground data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
         >
           {item.label}
           {showCount && typeof item.count === 'number' ? (
@@ -139,9 +139,9 @@ export default function FilterBar({
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             placeholder="仓库名、描述"
-            className="h-9 rounded-none font-mono text-[12px]"
+            className="h-9 rounded-lg font-mono text-[12px]"
           />
-          <Button type="submit" size="sm" className="h-9 rounded-none px-3">
+          <Button type="submit" size="sm" className="h-9 rounded-lg px-3">
             <Search className="size-3.5" data-icon="inline-start" />
             搜索
           </Button>
@@ -200,7 +200,7 @@ export default function FilterBar({
             value={current.license ?? 'all'}
             onValueChange={(value) => navigate({ license: value === 'all' ? undefined : value })}
           >
-            <SelectTrigger className="h-9 rounded-none text-[12px]">
+            <SelectTrigger className="h-9 rounded-lg text-[12px]">
               <SelectValue placeholder="全部许可" />
             </SelectTrigger>
             <SelectContent>
@@ -225,7 +225,7 @@ export default function FilterBar({
             value={current.sort ?? 'stars'}
             onValueChange={(value) => navigate({ sort: value, order: 'desc' })}
           >
-            <SelectTrigger className="h-9 rounded-none text-[12px]">
+            <SelectTrigger className="h-9 rounded-lg text-[12px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -244,7 +244,7 @@ export default function FilterBar({
           type="button"
           variant="ghost"
           size="sm"
-          className="justify-start rounded-none px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+          className="justify-start rounded-lg px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
           onClick={() => {
             setKeyword('');
             router.push('/repos');
@@ -262,12 +262,12 @@ export default function FilterBar({
       <div className="flex items-center gap-2 md:hidden">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="sm" className="rounded-none">
+            <Button variant="outline" size="sm" className="rounded-lg">
               <Filter className="size-3.5" data-icon="inline-start" />
               筛选{activeCount > 0 ? ` · ${activeCount}` : ''}
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[86vh] overflow-y-auto rounded-none">
+          <SheetContent side="bottom" className="max-h-[86vh] overflow-y-auto rounded-lg">
             <SheetHeader className="text-left">
               <SheetTitle className="font-display text-lg">筛选与排序</SheetTitle>
               <SheetDescription className="font-mono text-[10px] uppercase tracking-[0.14em]">
@@ -285,7 +285,7 @@ export default function FilterBar({
       </div>
 
       <aside className="hidden md:block">
-        <div className="sticky top-20 border border-border bg-card">
+        <div className="sticky top-20 overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
               Filter / 筛选

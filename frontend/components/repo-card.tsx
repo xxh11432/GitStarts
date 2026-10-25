@@ -72,16 +72,16 @@ export default function RepoCard({
   const topics = repo.topics?.slice(0, 2) ?? [];
 
   return (
-    <article className="group flex h-full flex-col border border-border bg-card p-4 transition-colors hover:border-primary/40">
+    <article className="group flex h-full flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40">
       <div className="flex items-start gap-3">
-        <Avatar className="size-9 shrink-0 rounded-none border border-border">
+        <Avatar className="size-9 shrink-0 rounded-lg border border-border">
           <AvatarImage
             src={`https://github.com/${repo.owner}.png?size=96`}
             alt=""
             loading="lazy"
             referrerPolicy="no-referrer"
           />
-          <AvatarFallback className="rounded-none bg-muted font-mono text-[12px] text-muted-foreground">
+          <AvatarFallback className="rounded-lg bg-muted font-mono text-[12px] text-muted-foreground">
             {(repo.owner || repo.fullName).slice(0, 1).toUpperCase()}
           </AvatarFallback>
         </Avatar>
@@ -109,13 +109,13 @@ export default function RepoCard({
         {repo.latestReleaseTag ? (
           <span
             title={repo.latestReleaseAt ? `发布于 ${repo.latestReleaseAt.slice(0, 10)}` : undefined}
-            className="border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] tracking-tight text-foreground"
+            className="rounded-full border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] tracking-tight text-foreground"
           >
             {repo.latestReleaseTag}
           </span>
         ) : null}
         {repo.language ? (
-          <span className="inline-flex items-center gap-1 border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
             <span
               aria-hidden
               className="size-1.5 rounded-full"
@@ -127,7 +127,7 @@ export default function RepoCard({
         {topics.map((topic) => (
           <span
             key={topic}
-            className="border border-border px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-tight text-muted-foreground"
+            className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-tight text-muted-foreground"
           >
             {topic}
           </span>

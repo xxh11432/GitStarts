@@ -245,7 +245,7 @@ export default function MatchWorkbench() {
     <div className="flex flex-col gap-6">
       <form
         onSubmit={submit}
-        className="border border-border bg-card shadow-hard transition-colors focus-within:border-primary/60"
+        className="overflow-hidden rounded-xl border border-border bg-card shadow-hard transition-colors focus-within:border-primary/60"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2">
           <label
@@ -272,18 +272,18 @@ export default function MatchWorkbench() {
           maxLength={4000}
           disabled={busy}
           placeholder="例如：我们想私有部署一个中文全文检索知识库，必须支持 Docker 和 MIT 许可，最好有活跃维护"
-          className="min-h-[120px] resize-none rounded-none border-0 bg-transparent px-4 py-3 text-body text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0 disabled:opacity-70"
+          className="min-h-[120px] resize-none rounded-lg border-0 bg-transparent px-4 py-3 text-body text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0 disabled:opacity-70"
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2.5">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             条件只来自你的描述；信息不足处会标注「无法确认」。
           </p>
           {phase === 'streaming' ? (
-            <Button type="button" variant="outline" size="sm" onClick={stop} className="rounded-none">
+            <Button type="button" variant="outline" size="sm" onClick={stop} className="rounded-lg">
               停止
             </Button>
           ) : (
-            <Button type="submit" size="sm" disabled={!rawText.trim() || busy} className="rounded-none">
+            <Button type="submit" size="sm" disabled={!rawText.trim() || busy} className="rounded-lg">
               {candidates.length > 0 ? '重新分析描述' : '开始匹配'}
               <ArrowUpRight className="size-3.5" data-icon="inline-end" />
             </Button>
@@ -294,7 +294,7 @@ export default function MatchWorkbench() {
       {error ? (
         <Alert
           variant="destructive"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-none border-destructive/40 bg-destructive/5 px-4 py-3"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-destructive/40 bg-destructive/5 px-4 py-3"
         >
           <AlertDescription className="text-xs">{error}</AlertDescription>
           {canRetry ? (
@@ -307,7 +307,7 @@ export default function MatchWorkbench() {
       ) : null}
 
       {phase === 'streaming' || phase === 'saving' ? (
-        <div className="border border-border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {STAGES.map((item, index) => {
               const isActive = phase === 'saving' ? false : index === activeStage;
@@ -352,7 +352,7 @@ export default function MatchWorkbench() {
       ) : null}
 
       {meta || candidates.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border border-border bg-card px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {meta ? (
               <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -374,7 +374,7 @@ export default function MatchWorkbench() {
                   variant="outline"
                   size="sm"
                   onClick={addSelectedToBasket}
-                  className="rounded-none"
+                  className="rounded-lg"
                 >
                   加入对比篮
                 </Button>
@@ -388,7 +388,7 @@ export default function MatchWorkbench() {
               size="sm"
               onClick={goCompare}
               disabled={basket.length < 2}
-              className="rounded-none"
+              className="rounded-lg"
             >
               去对比
               <ArrowUpRight className="size-3.5" data-icon="inline-end" />
@@ -399,7 +399,7 @@ export default function MatchWorkbench() {
                 variant="ghost"
                 size="sm"
                 onClick={clearResults}
-                className="rounded-none text-muted-foreground"
+                className="rounded-lg text-muted-foreground"
               >
                 <Trash2 className="size-3.5" data-icon="inline-start" />
                 清空结果
@@ -426,7 +426,7 @@ export default function MatchWorkbench() {
       ) : null}
 
       {!busy && requirement && candidates.length === 0 && !error ? (
-        <div className="border border-dashed border-border bg-card px-5 py-10 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-card px-5 py-10 text-center">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             No candidates
           </p>
@@ -438,7 +438,7 @@ export default function MatchWorkbench() {
       ) : null}
 
       {!busy && !requirement && !error ? (
-        <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+        <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
           {[
             ['01', '描述需求', '只抽取你明说的条件，不确定项会标注「无法确认」。'],
             ['02', '核对候选', '契合度四维分解，硬条件逐条给出满足状态。'],

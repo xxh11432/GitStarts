@@ -14,7 +14,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" className="font-sans">
+    <html lang="zh-CN" className="font-sans" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{if(localStorage.getItem('gitstars-theme')==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();",
+          }}
+        />
+      </head>
       <body className="flex min-h-screen flex-col bg-background text-foreground">
         <TooltipProvider delayDuration={200}>
           <Navbar />

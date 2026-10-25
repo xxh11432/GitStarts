@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="GitStars">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="49%" r="64%">
+      <stop offset="0%" stop-color="#2a1d0c" />
+      <stop offset="45%" stop-color="#151114" />
+      <stop offset="100%" stop-color="#07070a" />
+    </radialGradient>
+    <linearGradient id="gold" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffdf9c" />
+      <stop offset="50%" stop-color="#ffc75a" />
+      <stop offset="100%" stop-color="#eda12f" />
+    </linearGradient>
+    <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffc44d" stop-opacity="0.62" />
+      <stop offset="55%" stop-color="#ffb02e" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#ffb02e" stop-opacity="0" />
+    </radialGradient>
+    <filter id="blur" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="14" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+
+  <!-- 轨道环 -->
+  <circle cx="256" cy="252" r="206" fill="none" stroke="#dcdce0" stroke-opacity="0.82" stroke-width="6.5" />
+
+  <!-- 轨道节点 -->
+  <g fill="url(#gold)">
+    <circle cx="256" cy="46" r="21" />
+    <circle cx="462" cy="252" r="21" />
+    <circle cx="256" cy="458" r="21" />
+    <circle cx="50" cy="252" r="21" />
+  </g>
+  <g stroke="#f2f2f4" stroke-width="8" stroke-linecap="round">
+    <line x1="256" y1="72" x2="256" y2="114" />
+    <line x1="436" y1="252" x2="406" y2="252" />
+    <line x1="76" y1="252" x2="106" y2="252" />
+    <line x1="256" y1="432" x2="256" y2="384" />
+  </g>
+
+  <!-- 猫头轮廓 -->
+  <path
+    d="M 256 138
+       C 238 141 219 148 203 158
+       C 184 134 160 106 142 95
+       C 130 88 119 93 115 107
+       C 109 133 106 168 105 210
+       C 102 248 99 278 102 306
+       C 105 337 124 357 158 362
+       C 192 367 222 366 256 366
+       C 290 366 320 367 354 362
+       C 388 357 407 337 410 306
+       C 413 278 410 248 407 210
+       C 406 168 403 133 397 107
+       C 393 93 382 88 370 95
+       C 352 106 328 134 309 158
+       C 293 148 274 141 256 138 Z"
+    fill="url(#bg)"
+    stroke="#ffffff"
+    stroke-width="21"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+  />
+
+  <!-- 星芒光晕 -->
+  <circle cx="256" cy="250" r="122" fill="url(#starGlow)" />
+  <polygon
+    points="256,188 270.7,229.8 315,230.8 279.8,257.7 292.4,300.2 256,275 219.6,300.2 232.2,257.7 197,230.8 241.3,229.8"
+    fill="#ffc247"
+    filter="url(#blur)"
+  />
+  <polygon
+    points="256,188 270.7,229.8 315,230.8 279.8,257.7 292.4,300.2 256,275 219.6,300.2 232.2,257.7 197,230.8 241.3,229.8"
+    fill="url(#gold)"
+    stroke="url(#gold)"
+    stroke-width="10"
+    stroke-linejoin="round"
+  />
+</svg>

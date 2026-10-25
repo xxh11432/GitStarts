@@ -66,7 +66,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
           size="sm"
           disabled={disabled}
           onClick={() => setConditions(field, [...requirement[field], { key: 'platform', value: '' }])}
-          className="rounded-none"
+          className="rounded-lg"
         >
           <Plus className="size-3.5" data-icon="inline-start" />
           添加
@@ -74,7 +74,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
       </div>
 
       {requirement[field].length === 0 ? (
-        <p className="border border-dashed border-border px-3 py-3 text-[11px] text-muted-foreground">
+        <p className="rounded-lg border border-dashed border-border px-3 py-3 text-[11px] text-muted-foreground">
           暂无{title}
         </p>
       ) : (
@@ -98,7 +98,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
                 >
                   <SelectTrigger
                     aria-label={`${title}条件 ${index + 1}`}
-                    className="h-9 rounded-none font-mono text-[11px]"
+                    className="h-9 rounded-lg font-mono text-[11px]"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -124,7 +124,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
                     )
                   }
                   placeholder={KEY_OPTIONS.find((option) => option.value === condition.key)?.hint}
-                  className="h-9 rounded-none font-mono text-[11px]"
+                  className="h-9 rounded-lg font-mono text-[11px]"
                 />
                 <Button
                   type="button"
@@ -151,7 +151,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
   );
 
   return (
-    <section className="border border-border bg-card">
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-2.5">
         <div>
           <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
@@ -166,7 +166,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
           size="sm"
           onClick={onApply}
           disabled={disabled}
-          className="rounded-none"
+          className="rounded-lg"
         >
           按这些条件匹配
         </Button>
@@ -174,7 +174,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
 
       <div className="flex flex-col gap-5 p-4">
         {requirement.degraded ? (
-          <Alert className="rounded-none border-info/40 bg-info/5 px-3 py-2 text-info">
+          <Alert className="rounded-lg border-info/40 bg-info/5 px-3 py-2 text-info">
             <AlertDescription className="text-[11px] text-info">
               模型未能稳定抽取条件，以下内容按原文直接检索生成，请人工核对后再使用。
             </AlertDescription>
@@ -190,7 +190,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
             value={requirement.goal}
             disabled={disabled}
             onChange={(event) => onChange({ ...requirement, goal: event.target.value })}
-            className="h-9 rounded-none"
+            className="h-9 rounded-lg"
           />
         </div>
 
@@ -217,7 +217,7 @@ export default function ConditionEditor({ requirement, onChange, onApply, disabl
               })
             }
             placeholder="多个关键词用逗号分隔"
-            className="h-9 rounded-none"
+            className="h-9 rounded-lg"
           />
         </div>
       </div>

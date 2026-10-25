@@ -38,7 +38,7 @@ export default async function ComparisonsPage({
         title="对比记录"
         description="打开记录可导出 Markdown、创建或撤销只读分享。"
         actions={
-          <Button asChild variant="ghost" size="sm" className="rounded-none">
+          <Button asChild variant="ghost" size="sm" className="rounded-lg">
             <Link href="/me">返回个人中心</Link>
           </Button>
         }
@@ -50,7 +50,7 @@ export default async function ComparisonsPage({
             <Link
               key={item.id}
               href={`/me/comparisons/${item.id}`}
-              className="group flex items-start gap-3 border border-border bg-card p-4 transition-colors hover:border-primary/40"
+              className="group flex items-start gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
               <span className="pt-0.5 font-mono text-[10px] text-muted-foreground">
                 {String(index + 1).padStart(2, '0')}
@@ -65,7 +65,7 @@ export default async function ComparisonsPage({
               </div>
               <span
                 className={cn(
-                  'shrink-0 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em]',
+                  'shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em]',
                   item.shared
                     ? 'border-primary/40 bg-primary/5 text-primary'
                     : 'border-border bg-muted text-muted-foreground',
@@ -85,7 +85,7 @@ export default async function ComparisonsPage({
           title="还没有对比记录"
           description="去对比工作台生成第一条可追溯的选型结论。"
           action={
-            <Button asChild variant="outline" size="sm" className="rounded-none">
+            <Button asChild variant="outline" size="sm" className="rounded-lg">
               <Link href="/compare">去对比工作台</Link>
             </Button>
           }

@@ -3,34 +3,60 @@
 @tailwind utilities;
 
 @layer base {
+  /* IDE 浅色主题（IntelliJ / VS Code Light+ 风格，默认） */
   :root {
-    --background: 45 40% 94%;
-    --foreground: 100 7% 9%;
-    --card: 45 57% 97%;
-    --card-foreground: 100 7% 9%;
-    --popover: 45 57% 97%;
-    --popover-foreground: 100 7% 9%;
-    --primary: 157 58% 22%;
-    --primary-foreground: 49 41% 95%;
-    --secondary: 43 32% 87%;
-    --secondary-foreground: 84 6% 16%;
-    --muted: 44 37% 90%;
-    --muted-foreground: 87 5% 37%;
-    --accent: 85 31% 89%;
-    --accent-foreground: 157 58% 22%;
-    --destructive: 10 69% 42%;
-    --destructive-foreground: 49 41% 95%;
-    --border: 44 23% 81%;
-    --input: 44 23% 81%;
-    --ring: 157 58% 22%;
-    --highlight: 67 76% 67%;
-    --info: 211 48% 35%;
-    --radius: 0.375rem;
+    --background: 210 25% 98%;
+    --foreground: 220 16% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 16% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 16% 12%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 24% 94%;
+    --secondary-foreground: 220 16% 16%;
+    --muted: 210 22% 95%;
+    --muted-foreground: 215 14% 40%;
+    --accent: 214 100% 94%;
+    --accent-foreground: 221 83% 45%;
+    --destructive: 0 72% 47%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 213 17% 87%;
+    --input: 213 17% 85%;
+    --ring: 221 83% 53%;
+    --highlight: 48 96% 70%;
+    --info: 217 91% 48%;
+    --radius: 0.75rem;
 
     --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
       'Noto Sans SC', system-ui, sans-serif;
     --font-display: 'Bricolage Grotesque Variable', var(--font-sans);
     --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* IDE 深色主题（Darcula / VS Code Dark+ 风格） */
+  .dark {
+    --background: 220 7% 11%;
+    --foreground: 220 13% 88%;
+    --card: 220 6% 15%;
+    --card-foreground: 220 13% 88%;
+    --popover: 220 6% 16%;
+    --popover-foreground: 220 13% 88%;
+    --primary: 217 91% 65%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 220 6% 20%;
+    --secondary-foreground: 220 13% 88%;
+    --muted: 220 6% 18%;
+    --muted-foreground: 218 9% 64%;
+    --accent: 217 55% 24%;
+    --accent-foreground: 213 94% 80%;
+    --destructive: 0 63% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 6% 25%;
+    --input: 220 6% 27%;
+    --ring: 217 91% 65%;
+    --highlight: 45 93% 55%;
+    --info: 213 94% 70%;
   }
 
   * {
@@ -39,6 +65,11 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {

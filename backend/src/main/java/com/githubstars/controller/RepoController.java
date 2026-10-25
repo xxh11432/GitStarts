@@ -44,8 +44,9 @@ public class RepoController {
     public List<RepoResponse> rank(
             @RequestParam(defaultValue = "total") String type,
             @RequestParam(required = false) String language,
+            @RequestParam(required = false) String topic,
             @RequestParam(defaultValue = "20") int limit) {
-        return rankService.rank(type, language, limit);
+        return rankService.rank(type, language, topic, limit);
     }
 
     @GetMapping("/similar/{*fullName}")

@@ -51,8 +51,8 @@ export default function RepoRow({ repo, index }: { repo: Repo; index?: string })
           </p>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-          {platform ? <span className="border border-border px-1.5 py-0.5">{platform}</span> : null}
-          {repo.category ? <span className="border border-border px-1.5 py-0.5">{repo.category}</span> : null}
+          {platform ? <span className="rounded-full border border-border px-1.5 py-0.5">{platform}</span> : null}
+          {repo.category ? <span className="rounded-full border border-border px-1.5 py-0.5">{repo.category}</span> : null}
           {updatedAt ? <span>更新于 {updatedAt}</span> : null}
         </div>
       </div>

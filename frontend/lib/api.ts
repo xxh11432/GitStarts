@@ -52,11 +52,19 @@ export async function fetchRepos(params: ListParams): Promise<PageResult<Repo>> 
   return getJson(`${API_BASE}/repos${suffix ? `?${suffix}` : ''}`);
 }
 
-export async function fetchRank(type = 'total', language?: string, limit = 20): Promise<Repo[]> {
+export async function fetchRank(
+  type = 'total',
+  language?: string,
+  limit = 20,
+  topic?: string,
+): Promise<Repo[]> {
   const qs = new URLSearchParams();
   qs.set('type', type);
   if (language) {
     qs.set('language', language);
+  }
+  if (topic) {
+    qs.set('topic', topic);
   }
   qs.set('limit', String(limit));
   return getJson(`${API_BASE}/repos/rank?${qs.toString()}`);

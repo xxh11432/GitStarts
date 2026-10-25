@@ -8,7 +8,7 @@ export default function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 border border-dashed border-border bg-card px-6 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
       <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         No records
       </span>

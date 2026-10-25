@@ -18,7 +18,7 @@ export default function Pagination({
   return (
     <nav className="flex items-center justify-between gap-3 border-t border-border pt-4 text-sm" aria-label="分页">
       {page > 1 ? (
-        <Button asChild variant="outline" size="sm" className="rounded-none">
+        <Button asChild variant="outline" size="sm" className="rounded-lg">
           <Link href={`${base}?page=${page - 1}`}>
             <ArrowLeft className="size-3.5" data-icon="inline-start" />
             上一页
@@ -31,7 +31,7 @@ export default function Pagination({
         Page {page} / {totalPages}
       </span>
       {page < totalPages ? (
-        <Button asChild variant="outline" size="sm" className="rounded-none">
+        <Button asChild variant="outline" size="sm" className="rounded-lg">
           <Link href={`${base}?page=${page + 1}`}>
             下一页
             <ArrowRight className="size-3.5" data-icon="inline-end" />

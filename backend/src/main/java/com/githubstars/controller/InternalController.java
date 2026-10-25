@@ -185,7 +185,7 @@ public class InternalController {
             @RequestParam(defaultValue = "total") String type,
             @RequestParam(required = false) String language,
             @RequestParam(defaultValue = "10") int limit) {
-        return rankService.rank(type, language, limit);
+        return rankService.rank(type, language, null, limit);
     }
 
     /**

@@ -76,7 +76,7 @@ export default function FavoritesManager({
         title="还没有收藏"
         description="去仓库详情页点击「收藏」，备注与分类会一起沉淀到这里。"
         action={
-          <Button asChild variant="outline" size="sm" className="rounded-none">
+          <Button asChild variant="outline" size="sm" className="rounded-lg">
             <Link href="/repos">浏览仓库</Link>
           </Button>
         }
@@ -93,7 +93,7 @@ export default function FavoritesManager({
       {error ? <p className="text-[11px] text-destructive">{error}</p> : null}
 
       {items.map((item, index) => (
-        <article key={item.id} className="border border-border bg-card p-4">
+        <article key={item.id} className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-baseline gap-2">
@@ -118,7 +118,7 @@ export default function FavoritesManager({
                 variant="outline"
                 size="sm"
                 onClick={() => startEdit(item)}
-                className="rounded-none"
+                className="rounded-lg"
               >
                 <Pencil className="size-3" data-icon="inline-start" />
                 备注
@@ -129,7 +129,7 @@ export default function FavoritesManager({
                 size="sm"
                 onClick={() => setPendingRemove(item)}
                 disabled={busyId === item.id}
-                className="rounded-none"
+                className="rounded-lg"
               >
                 <Trash2 className="size-3" data-icon="inline-start" />
                 {busyId === item.id ? '处理中…' : '取消收藏'}
@@ -148,14 +148,14 @@ export default function FavoritesManager({
                 onChange={(event) => setDraft(event.target.value)}
                 maxLength={500}
                 placeholder="为什么收藏它？"
-                className="h-8 min-w-[200px] flex-1 rounded-none text-xs"
+                className="h-8 min-w-[200px] flex-1 rounded-lg text-xs"
               />
               <Button
                 type="button"
                 size="sm"
                 onClick={() => void saveNote(item.id)}
                 disabled={busyId === item.id}
-                className="rounded-none"
+                className="rounded-lg"
               >
                 保存
               </Button>
@@ -164,13 +164,13 @@ export default function FavoritesManager({
                 variant="outline"
                 size="sm"
                 onClick={() => setEditingId(null)}
-                className="rounded-none"
+                className="rounded-lg"
               >
                 取消
               </Button>
             </div>
           ) : item.note ? (
-            <p className="mt-2 border-l-2 border-highlight bg-highlight/10 px-2 py-1 text-[11px] text-foreground">
+            <p className="mt-2 rounded-r-md border-l-2 border-highlight bg-highlight/10 px-2 py-1 text-[11px] text-foreground">
               备注：{item.note}
             </p>
           ) : null}
@@ -178,7 +178,7 @@ export default function FavoritesManager({
       ))}
 
       <AlertDialog open={Boolean(pendingRemove)} onOpenChange={(open) => !open && setPendingRemove(null)}>
-        <AlertDialogContent className="rounded-none">
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display">取消收藏这个仓库？</AlertDialogTitle>
             <AlertDialogDescription className="text-[12px] leading-relaxed">
@@ -188,14 +188,14 @@ export default function FavoritesManager({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-none">保留</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-lg">保留</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (pendingRemove) {
                   void remove(pendingRemove.id);
                 }
               }}
-              className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               确认移除
             </AlertDialogAction>

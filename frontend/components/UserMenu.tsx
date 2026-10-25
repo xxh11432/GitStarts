@@ -41,9 +41,9 @@ export default function UserMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="gap-2 px-1.5">
-          <Avatar className="size-6 rounded-none">
+          <Avatar className="size-6 rounded-lg">
             {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
-            <AvatarFallback className="rounded-none bg-primary font-mono text-[10px] text-primary-foreground">
+            <AvatarFallback className="rounded-lg bg-primary font-mono text-[10px] text-primary-foreground">
               {nickname.slice(0, 1)}
             </AvatarFallback>
           </Avatar>

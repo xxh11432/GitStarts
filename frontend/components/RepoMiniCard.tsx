@@ -12,7 +12,7 @@ function formatCount(value?: number): string {
 export default function RepoMiniCard({ repo }: { repo: ChatRepo }) {
   const platform = repo.platform && repo.platform !== 'other' ? platformLabel(repo.platform) : undefined;
   return (
-    <article className="border border-border bg-card p-3 transition-colors hover:border-primary/40">
+    <article className="rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/40">
       <div className="flex items-baseline justify-between gap-2">
         <Link
           href={`/repos/${repo.fullName}`}
@@ -35,7 +35,7 @@ export default function RepoMiniCard({ repo }: { repo: ChatRepo }) {
         {[repo.language, repo.license, platform].filter(Boolean).map((label) => (
           <span
             key={label}
-            className="border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground"
+            className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground"
           >
             {label}
           </span>

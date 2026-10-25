@@ -86,7 +86,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button asChild size="sm" className="rounded-none">
+          <Button asChild size="sm" className="rounded-lg">
             <a href={`https://github.com/${repo.fullName}`} target="_blank" rel="noreferrer">
               <GithubMark className="size-3.5" />
               在 GitHub 查看
@@ -94,7 +94,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
             </a>
           </Button>
           {homepage ? (
-            <Button asChild variant="outline" size="sm" className="rounded-none">
+            <Button asChild variant="outline" size="sm" className="rounded-lg">
               <a href={homepage} target="_blank" rel="noreferrer">
                 项目主页
                 <ArrowUpRight className="size-3.5" data-icon="inline-end" />
@@ -107,7 +107,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
             initialFavorited={Boolean(favorite?.favorited)}
             initialId={favorite?.id}
           />
-          <Button asChild variant="ghost" size="sm" className="ml-auto rounded-none text-muted-foreground">
+          <Button asChild variant="ghost" size="sm" className="ml-auto rounded-lg text-muted-foreground">
             <Link href="/repos">
               <ArrowLeft className="size-3.5" data-icon="inline-start" />
               返回列表
@@ -118,7 +118,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-8">
-          <section className="border border-border bg-card">
+          <section className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
               <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
                 Brief / README 摘要
@@ -154,7 +154,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
                   <Link
                     key={topic}
                     href={`/repos?topic=${encodeURIComponent(topic)}`}
-                    className="border border-border bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                    className="rounded-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                   >
                     {topic}
                   </Link>
@@ -179,7 +179,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
             {similar.length === 0 ? (
               <EmptyState title="暂无相关推荐" description="索引完成后会基于分类与主题生成相似仓库。" />
             ) : (
-              <div className="border border-border bg-background px-4">
+              <div className="rounded-xl border border-border bg-background px-4">
                 {similar.map((item, index) => (
                   <RepoRow key={item.id} repo={item} index={String(index + 1).padStart(2, '0')} />
                 ))}
@@ -189,7 +189,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
         </div>
 
         <aside className="h-fit lg:sticky lg:top-20">
-          <section className="border border-border bg-card">
+          <section className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="border-b border-border px-4 py-2.5">
               <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
                 Facts / 事实
@@ -217,7 +217,7 @@ export default async function RepoDetailPage({ params }: PageProps) {
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+    <span className="rounded-full border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
       {children}
     </span>
   );

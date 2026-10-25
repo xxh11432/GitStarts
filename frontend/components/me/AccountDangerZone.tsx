@@ -34,7 +34,7 @@ export default function AccountDangerZone() {
   };
 
   return (
-    <section className="border border-destructive/40 bg-destructive/5 p-5">
+    <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-destructive">
@@ -46,12 +46,12 @@ export default function AccountDangerZone() {
         </div>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button type="button" variant="destructive" size="sm" disabled={busy} className="rounded-none">
+            <Button type="button" variant="destructive" size="sm" disabled={busy} className="rounded-lg">
               <Trash2 className="size-3.5" data-icon="inline-start" />
               {busy ? '清理中…' : '删除我的账号与数据'}
             </Button>
           </AlertDialogTrigger>
-          <AlertDialogContent className="rounded-none">
+          <AlertDialogContent className="rounded-lg">
             <AlertDialogHeader>
               <AlertDialogTitle className="font-display">确认永久删除账号？</AlertDialogTitle>
               <AlertDialogDescription className="text-[12px] leading-relaxed">
@@ -59,10 +59,10 @@ export default function AccountDangerZone() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="rounded-none">取消</AlertDialogCancel>
+              <AlertDialogCancel className="rounded-lg">取消</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => void remove()}
-                className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 确认删除
               </AlertDialogAction>

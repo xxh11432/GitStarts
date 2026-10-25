@@ -28,7 +28,7 @@ export default async function IdeasPage() {
         title="结构化需求"
         description="想法会被结构化保存，可直接带入匹配或对比。"
         actions={
-          <Button asChild variant="ghost" size="sm" className="rounded-none">
+          <Button asChild variant="ghost" size="sm" className="rounded-lg">
             <Link href="/me">返回个人中心</Link>
           </Button>
         }
@@ -37,7 +37,7 @@ export default async function IdeasPage() {
       {page?.items.length ? (
         <div className="flex flex-col gap-3">
           {page.items.map((idea, index) => (
-            <article key={idea.id} className="border border-border bg-card p-4">
+            <article key={idea.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2">
@@ -52,7 +52,7 @@ export default async function IdeasPage() {
                     rev {idea.revision} · {formatTime(idea.updatedAt)}
                   </p>
                 </div>
-                <Button asChild variant="outline" size="sm" className="rounded-none">
+                <Button asChild variant="outline" size="sm" className="rounded-lg">
                   <Link href={`/compare?ideaId=${idea.id}`}>
                     继续对比
                     <ArrowUpRight className="size-3.5" data-icon="inline-end" />
@@ -70,7 +70,7 @@ export default async function IdeasPage() {
           title="还没有保存的想法"
           description="去「语义匹配」描述你的需求，结构化结果会自动沉淀。"
           action={
-            <Button asChild variant="outline" size="sm" className="rounded-none">
+            <Button asChild variant="outline" size="sm" className="rounded-lg">
               <Link href="/match">开始匹配</Link>
             </Button>
           }

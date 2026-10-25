@@ -40,7 +40,7 @@ export default async function ComparisonDetailPage({
           comparison.ideaId ? ` · 关联想法 #${comparison.ideaId}` : ''
         }`}
         actions={
-          <Button asChild variant="ghost" size="sm" className="rounded-none">
+          <Button asChild variant="ghost" size="sm" className="rounded-lg">
             <Link href="/me/comparisons">返回对比历史</Link>
           </Button>
         }

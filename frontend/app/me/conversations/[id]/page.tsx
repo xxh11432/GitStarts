@@ -48,7 +48,7 @@ export default async function ConversationDetailPage({
         } 条消息 · 更新于 ${formatTime(detail.conversation.updatedAt)}`}
         actions={
           <>
-            <Button asChild variant="ghost" size="sm" className="rounded-none">
+            <Button asChild variant="ghost" size="sm" className="rounded-lg">
               <Link href="/me/conversations">返回会话历史</Link>
             </Button>
             <ConversationDeleteButton conversationId={detail.conversation.id} />
@@ -58,7 +58,7 @@ export default async function ConversationDetailPage({
 
       <div className="flex flex-col gap-3">
         {detail.messages.length === 0 ? (
-          <p className="border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
+          <p className="rounded-xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
             这条会话还没有消息。
           </p>
         ) : (
@@ -68,7 +68,7 @@ export default async function ConversationDetailPage({
             if (isUser) {
               return (
                 <div key={message.id} className="flex justify-end">
-                  <div className="max-w-[88%] border border-border bg-muted px-4 py-3">
+                  <div className="max-w-[88%] rounded-2xl border border-border bg-muted px-4 py-3">
                     <div className="flex items-baseline justify-between gap-4">
                       <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
                         Request
@@ -86,7 +86,7 @@ export default async function ConversationDetailPage({
             }
             if (isTool) {
               return (
-                <article key={message.id} className="border border-border bg-muted/50 p-3">
+                <article key={message.id} className="rounded-lg border border-border bg-muted/50 p-3">
                   <div className="flex items-baseline justify-between gap-4">
                     <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
                       Tool result
@@ -102,7 +102,7 @@ export default async function ConversationDetailPage({
               );
             }
             return (
-              <article key={message.id} className={cn('border border-border bg-card')}>
+              <article key={message.id} className={cn('overflow-hidden rounded-xl border border-border bg-card')}>
                 <div className="flex items-baseline justify-between gap-4 border-b border-border px-4 py-2">
                   <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-primary">
                     Analysis / AI

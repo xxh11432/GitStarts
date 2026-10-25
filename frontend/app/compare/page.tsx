@@ -62,7 +62,7 @@ export default async function ComparePage({
           </p>
         }
         actions={
-          <Button asChild variant="outline" size="sm" className="rounded-none">
+          <Button asChild variant="outline" size="sm" className="rounded-lg">
             <Link href="/match">
               先去匹配候选
               <ArrowUpRight className="size-3.5" data-icon="inline-end" />
@@ -74,7 +74,7 @@ export default async function ComparePage({
       <div className="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="order-2 flex flex-col gap-4 md:order-1">
           <QuotaBadge initial={me.quota} />
-          <section className="border border-border bg-card p-4">
+          <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
               How to use / 怎么用
             </h2>
@@ -85,7 +85,7 @@ export default async function ComparePage({
               <p>生成后可导出 Markdown，或创建只读分享链接给同事评审。</p>
             </div>
           </section>
-          <section className="border border-border bg-card p-4">
+          <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
               Links / 相关
             </h2>
