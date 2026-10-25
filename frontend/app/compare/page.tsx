@@ -53,7 +53,7 @@ export default async function ComparePage({
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
-        index="04"
+        index="05"
         eyebrow="Deep compare"
         title="把 2–4 个候选放在一起看"
         description="按定位、技术栈、部署、能力覆盖、许可、活跃度、扩展性与风险 8 个维度展开，每个单元格都附带 README / manifest 证据或显式标注「信息不足」。"

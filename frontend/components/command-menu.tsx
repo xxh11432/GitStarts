@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 const QUICK_LINKS = [
   { href: '/', label: '首页', icon: Home },
+  { href: '/chat', label: 'AI 对话', icon: MessageSquare },
   { href: '/repos', label: '仓库档案库', icon: Search },
   { href: '/match', label: '语义匹配工作台', icon: Sparkles },
   { href: '/compare', label: '深度对比工作台', icon: Scale },

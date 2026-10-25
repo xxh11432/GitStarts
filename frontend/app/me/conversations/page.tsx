@@ -85,10 +85,10 @@ export default async function ConversationsPage({
       ) : (
         <EmptyState
           title="还没有会话记录"
-          description="回首页向 AI 描述你的需求，对话会自动保存。"
+          description="去 01 AI 对话提问，会话会自动保存。"
           action={
             <Button asChild variant="outline" size="sm" className="rounded-lg">
-              <Link href="/">回首页开始对话</Link>
+              <Link href="/chat">去 AI 对话</Link>
             </Button>
           }
         />

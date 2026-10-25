@@ -19,11 +19,12 @@ import { cn } from '@/lib/utils';
 import LoginButton from './LoginButton';
 
 const LINKS = [
-  { href: '/', label: '首页', icon: Home },
-  { href: '/repos', label: '仓库', icon: Bookmark },
-  { href: '/rank', label: '排行榜', icon: Trophy },
-  { href: '/match', label: '语义匹配', icon: Sparkles },
-  { href: '/compare', label: '深度对比', icon: Scale },
+  { href: '/', label: '首页', index: '00', icon: Home },
+  { href: '/chat', label: 'AI 对话', index: '01', icon: MessageSquare },
+  { href: '/repos', label: '仓库', index: '02', icon: Bookmark },
+  { href: '/rank', label: '排行榜', index: '03', icon: Trophy },
+  { href: '/match', label: '语义匹配', index: '04', icon: Sparkles },
+  { href: '/compare', label: '深度对比', index: '05', icon: Scale },
 ];
 
 const ACCOUNT_LINKS = [
@@ -61,7 +62,7 @@ export default function MobileNav({
 
         <div className="mt-6 flex flex-col gap-6">
           <nav className="flex flex-col gap-1">
-            {LINKS.map((item, index) => {
+            {LINKS.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
@@ -76,7 +77,7 @@ export default function MobileNav({
                     )}
                   >
                     <span className="font-mono text-[10px] text-muted-foreground">
-                      {String(index + 1).padStart(2, '0')}
+                      {item.index}
                     </span>
                     <Icon className="size-4" aria-hidden />
                     {item.label}

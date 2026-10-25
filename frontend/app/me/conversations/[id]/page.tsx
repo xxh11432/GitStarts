@@ -49,6 +49,9 @@ export default async function ConversationDetailPage({
         } 条消息 · 更新于 ${formatTime(detail.conversation.updatedAt)}`}
         actions={
           <>
+            <Button asChild variant="outline" size="sm" className="rounded-lg">
+              <Link href={`/chat?c=${detail.conversation.id}`}>在对话中继续</Link>
+            </Button>
             <Button asChild variant="ghost" size="sm" className="rounded-lg">
               <Link href="/me/conversations">返回会话历史</Link>
             </Button>

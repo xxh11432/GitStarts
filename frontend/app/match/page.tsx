@@ -19,7 +19,7 @@ export default async function MatchPage() {
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
-        index="03"
+        index="04"
         eyebrow="Semantic match"
         title="把需求变成可核对的候选清单"
         description="先用一句话描述目标，AI 只抽取你明确说过的条件，再到站内 README 索引里召回、重排，并按语义、条件覆盖、维护活跃、许可与文档四项给出契合度。"

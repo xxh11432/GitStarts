@@ -70,7 +70,7 @@ export default async function RankPage({
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
-        index="02.1"
+        index="03"
         eyebrow="Leaderboards"
         title="开源项目排行榜"
         description="按 Star、近期活跃度与创建时间整理榜单，并可按语言或主题标签筛选；排名只反映公开仓库的客观指标，是否适合你的场景仍需回到项目档案核对证据。"

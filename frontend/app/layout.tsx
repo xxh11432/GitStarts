@@ -5,6 +5,7 @@ import '@fontsource/ibm-plex-mono/latin-500.css';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
+import AppShell from '@/components/app-shell';
 import Navbar from '@/components/Navbar';
 
 export const metadata: Metadata = {
@@ -32,19 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             跳到主要内容
           </a>
           <Navbar />
-          <main
-            id="main-content"
-            tabIndex={-1}
-            className="mx-auto w-full max-w-container flex-1 px-4 pb-20 pt-8 outline-none sm:px-6 lg:px-8"
-          >
-            {children}
-          </main>
-          <footer className="border-t border-border">
-            <div className="mx-auto flex max-w-container flex-col gap-2 px-4 py-8 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-              <span>GitStars · Open-source decision ledger</span>
-              <span>Evidence from public README &amp; manifests</span>
-            </div>
-          </footer>
+          <AppShell>{children}</AppShell>
           <Toaster />
         </TooltipProvider>
       </body>
