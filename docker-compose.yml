@@ -275,6 +275,30 @@ services:
     mem_limit: ${WORKER_MEM_LIMIT:-192m}
     logging: *default-logging
 
+  alert-worker:
+    # 异常日志通知：通过 Docker API 巡检容器状态与 ERROR 日志，推送飞书卡片
+    image: python:3.12-slim
+    container_name: gs-alert-worker
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ALERT_ENABLED: ${ALERT_ENABLED:-true}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+      ALERT_SECRET: ${ALERT_SECRET:-}
+      ALERT_ENV: ${ALERT_ENV:-production}
+      ALERT_INTERVAL_SECONDS: ${ALERT_INTERVAL_SECONDS:-60}
+      PYTHONUNBUFFERED: "1"
+      TZ: Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./deploy/alerting/alertd.py:/app/alertd.py:ro
+      - alert-state:/var/lib/gitstars-alert
+    command: ["python", "/app/alertd.py", "--loop"]
+    mem_limit: ${ALERT_MEM_LIMIT:-32m}
+    logging: *default-logging
+
   frontend:
     build:
       context: ./frontend
@@ -336,3 +360,4 @@ volumes:
   redis-data:
   qdrant-data:
   model-cache:
+  alert-state:

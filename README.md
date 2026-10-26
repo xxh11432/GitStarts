@@ -152,6 +152,7 @@ flowchart TB
 | `backend` | 账号、配额、持久化、仓库检索（唯一数据出口） | 引入模型 SDK、感知 prompt 与模型厂商 |
 | `llm-service` | 唯一模型出口、prompt、工具编排、重排、SSE | 直连 MySQL、判断业务权限 |
 | `ingest-worker` | 抓取、清洗、分块、embedding、写索引；经 backend 内部接口读写文档元数据 | 直连 MySQL、对外提供业务 API |
+| `alert-worker` | 巡检容器状态与 ERROR 日志，异常时推送飞书卡片 | 承载业务流量、直连业务库 |
 
 ## 技术栈
 
@@ -290,6 +291,8 @@ uv run python -m worker
 | `GITHUB_REQUESTS_PER_MINUTE` | worker 调用 GitHub 的分钟级限速（默认 60，0 为不限）；与 backend 共享同一 Token 配额 |
 | `REDIS_MAXMEMORY` | Redis 内存上限（默认 256mb）；淘汰策略固定 `volatile-lru`，只淘汰带 TTL 的缓存键 |
 | `OPS_METRICS_RETENTION_DAYS` | `ai_metrics` 保留天数（默认 180，0 关闭自动清理） |
+| `ALERT_WEBHOOK` / `ALERT_SECRET` | 飞书群机器人 webhook 与可选签名密钥；留空时 `alert-worker` 只巡检不推送 |
+| `ALERT_ENABLED` / `ALERT_ENV` / `ALERT_INTERVAL_SECONDS` | 通知开关（默认 true）/ 卡片环境标识 / 巡检间隔（默认 60 秒） |
 
 ## 目录结构
 
@@ -317,6 +320,7 @@ GitStarts/
 │   ├── docker-entrypoint.sh  # 启动时检查 model-cache 卷，命中则离线加载 embedding
 │   └── Dockerfile            # 多阶段构建
 ├── deploy/init.sql           # MySQL 建表与初始化（含幂等补列存储过程）
+├── deploy/alerting/alertd.py # 异常日志通知：容器状态 + ERROR 日志 → 飞书卡片
 ├── nginx/nginx.conf          # 反向代理（/api/、/ai/、内部接口隔离、X-Request-Id 透传）
 ├── doc/                      # 技术方案、差异化功能方案、eval 报告
 └── docker-compose.yml

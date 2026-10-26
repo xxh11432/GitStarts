@@ -11,6 +11,7 @@
 | `backend` | 业务 API、配额、内部接口 | `requestId`、`quota_*`、`ops_budget_alert` |
 | `llm-service` | SSE、Graph、模型调用 | `chat_*` / `match_*` / `compare_*`、`metric_report_failed` |
 | `ingest-worker` | GitHub 同步、README / manifest 索引 | `index_run_*`、`fetch_*` |
+| `alert-worker` | 容器状态与 ERROR 日志巡检 → 飞书卡片 | 巡检结果、`推送失败`、心跳 |
 | `mysql` / `redis` / `qdrant` | 持久化、配额与缓存、向量检索 | 各自容器日志 |
 
 ```bash
@@ -55,6 +56,33 @@ backend 每天自动分批清理超过 `OPS_METRICS_RETENTION_DAYS`（默认 180
 -- 注意：开启自动清理时无需再手工执行
 DELETE FROM ai_metrics WHERE created_at < NOW() - INTERVAL 180 DAY LIMIT 10000;
 ```
+
+### 2.2 异常日志通知（alert-worker）
+
+`alert-worker` 每 60 秒通过 Docker Engine API 巡检一次，覆盖：
+
+- 容器退出、OOM、重启次数增加；
+- healthcheck 变为 `unhealthy`（持续失败每 2 小时提醒一次）；
+- 错误日志：backend `ERROR/FATAL`、llm-service / ingest-worker JSON `error|critical`、nginx 5xx、`ops_budget_alert`。
+
+同签名 30 分钟内不重复推送，每小时最多 10 条；连续 1 小时无异常时推送一条心跳。
+`alert-worker` 自身不参与巡检，巡检水位保存在 `alert-state` 卷。
+
+| 变量 | 默认 | 含义 |
+| --- | --- | --- |
+| `ALERT_WEBHOOK` | 空 | 飞书群机器人 webhook；留空时只巡检不推送 |
+| `ALERT_SECRET` | 空 | 群机器人开启签名校验时的密钥 |
+| `ALERT_ENABLED` | true | 通知开关 |
+| `ALERT_ENV` | production | 卡片标题中的环境标识 |
+| `ALERT_INTERVAL_SECONDS` | 60 | 巡检间隔 |
+
+```bash
+docker compose logs -f alert-worker
+docker compose exec alert-worker python /app/alertd.py --dry-run   # 只打印命中的告警
+docker compose exec alert-worker python /app/alertd.py --test      # 发送一条真实测试卡片
+```
+
+> webhook / secret 只放在 `.env`（已 gitignore），不要提交到仓库或写进镜像。
 
 ## 3. 依赖漏洞复检（M7）
 

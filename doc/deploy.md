@@ -16,6 +16,7 @@ cp .env.example .env
 # 必填：MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / REDIS_PASSWORD / GITHUB_TOKEN /
 #       LLM_API_KEY（对话）/ EMBEDDING_API_KEY（硅基流动，embedding）/
 #       AUTH_GITHUB_CLIENT_ID / AUTH_GITHUB_CLIENT_SECRET / INTERNAL_TOKEN
+# 选填：ALERT_WEBHOOK / ALERT_SECRET（飞书异常日志通知，留空则只巡检不推送）
 # INTERNAL_TOKEN 建议：openssl rand -hex 32
 docker compose up -d --build
 docker compose ps
@@ -79,6 +80,28 @@ docker compose logs -f ingest-worker
 > 2000 个仓库的 README + manifest 首建通常需要 60–100 分钟，这是刻意的限速，避免打满 GitHub 配额；
 > worker 的 Redis 锁 TTL 为 4 小时，即使首建较慢也不会被下一轮重入。
 
+### 2.4 异常日志通知
+
+`alert-worker` 随 compose 启动，通过 `/var/run/docker.sock` 读取容器状态与日志，
+每 60 秒巡检一次并推送飞书卡片。`.env` 配置：
+
+```bash
+ALERT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/<token>
+ALERT_SECRET=          # 群机器人开启签名校验时填写
+ALERT_ENABLED=true
+ALERT_ENV=production
+```
+
+首次部署后发送一条真实测试卡片，确认 webhook 可用：
+
+```bash
+docker compose exec alert-worker python /app/alertd.py --test
+docker compose exec alert-worker python /app/alertd.py --dry-run   # 只打印、不发送
+```
+
+`ALERT_WEBHOOK` 留空时 `alert-worker` 仍会巡检，但不会推送；巡检水位保存在 `alert-state` 卷。
+巡检规则、去重与心跳节奏见 [ops.md](./ops.md) 2.2。
+
 ## 3. 升级
 
 ```bash
@@ -86,6 +109,8 @@ git pull
 docker compose build backend llm-service frontend
 docker compose up -d
 ```
+
+> 首次升级到包含 `alert-worker` 的版本会拉取 `python:3.12-slim` 镜像；该服务无需本地构建。
 
 数据库只做增量变更：
 
@@ -110,6 +135,7 @@ docker compose up -d
 - [ ] Redis 已开启 AOF（`redis-cli -a "$REDIS_PASSWORD" INFO persistence | grep aof_enabled`）
 - [ ] `/_next/image` 返回 404（全站不使用 next/image，已关闭优化器）
 - [ ] `docker compose ps` 全部 healthy；`/api/health` 与 `/ai/health` 返回 200
+- [ ] `alert-worker` 运行中，且收到过一条测试卡片（未配置 `ALERT_WEBHOOK` 时跳过）
 - [ ] 首页、登录、匹配、对比各跑一次真实请求
 - [ ] `/ops` 能看到当天请求与 token；预算阈值已按实际预算调整
 
