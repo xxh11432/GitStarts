@@ -15,7 +15,7 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: Asia/Shanghai
-    # 2 GB 档：关闭 performance_schema、缩小 buffer pool 与临时表，常驻约 250 MB
+    # 2 GB 档：关闭 performance_schema、缩小 buffer pool 与临时表，常驻约 250-280 MB
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -36,7 +36,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    mem_limit: ${MYSQL_MEM_LIMIT:-224m}
+    # 288m 才装得下 buffer pool 与连接开销；swap 配额只留 48m，避免工作集整体被换出
+    mem_limit: ${MYSQL_MEM_LIMIT:-288m}
+    memswap_limit: 336m
     logging: *default-logging
 
   redis:
@@ -53,7 +55,7 @@ services:
       - --appendfsync
       - everysec
       - --maxmemory
-      - ${REDIS_MAXMEMORY:-64mb}
+      - ${REDIS_MAXMEMORY:-48mb}
       - --maxmemory-policy
       - volatile-lru
     volumes:
@@ -63,7 +65,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    mem_limit: ${REDIS_MEM_LIMIT:-96m}
+    mem_limit: ${REDIS_MEM_LIMIT:-64m}
     logging: *default-logging
 
   qdrant:
@@ -76,10 +78,13 @@ services:
       QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
       - qdrant-data:/qdrant/storage
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    mem_limit: ${QDRANT_MEM_LIMIT:-160m}
+    # 只开 Docker 内网端口：llm-service / ingest-worker 走 http://qdrant:6333。
+    # 不发布到宿主机，避免 6333/6334 以 0.0.0.0 暴露。宿主机调试用
+    # `docker run --rm -p 127.0.0.1:6333:6333 ...` 或临时 compose override，勿写回本文件。
+    expose:
+      - "6333"
+      - "6334"
+    mem_limit: ${QDRANT_MEM_LIMIT:-112m}
     logging: *default-logging
 
   backend:
@@ -130,8 +135,9 @@ services:
       OPS_P95_MATCH_MS: ${OPS_P95_MATCH_MS:-30000}
       OPS_P95_COMPARE_MS: ${OPS_P95_COMPARE_MS:-180000}
       OPS_METRICS_RETENTION_DAYS: ${OPS_METRICS_RETENTION_DAYS:-180}
-      # 2 GB 档 JVM：限制堆/元空间/直接内存，SerialGC 降低 native 开销
-      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:MaxMetaspaceSize=112m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+      # 2 GB 档 JVM：各项上限合计 352m，给线程栈与 native 留 48m 余量。
+      # 原配置 256+112+48+32 恰好等于容器上限，没有余量，缓冲区只能被内核换出到 swap
+      JAVA_TOOL_OPTIONS: "-Xms96m -Xmx192m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=40m -XX:MaxDirectMemorySize=24m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
       TZ: Asia/Shanghai
     expose:
       - "8080"
@@ -141,7 +147,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
-    mem_limit: ${BACKEND_MEM_LIMIT:-448m}
+    mem_limit: ${BACKEND_MEM_LIMIT:-400m}
+    memswap_limit: 448m
     logging: *default-logging
 
   llm-service:
@@ -221,7 +228,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    mem_limit: ${LLM_MEM_LIMIT:-256m}
+    mem_limit: ${LLM_MEM_LIMIT:-224m}
     stop_grace_period: 30s
     logging: *default-logging
 
@@ -284,7 +291,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - model-cache:/models
-    mem_limit: ${WORKER_MEM_LIMIT:-192m}
+    mem_limit: ${WORKER_MEM_LIMIT:-128m}
     logging: *default-logging
 
   alert-worker:
@@ -327,9 +334,10 @@ services:
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://backend:8080}
       NEXT_TELEMETRY_DISABLED: "1"
-      # 限制 Node 老年代；SSR 页面单次输出可达 200+ KB，并发渲染实测需 ~300 MB，
-      # 128m 会在约 20 并发时堆溢出（FATAL ERROR: heap out of memory）并导致 502
-      NODE_OPTIONS: "--max-old-space-size=320"
+      # 限制 Node 老年代；128m 会在约 20 并发时堆溢出（FATAL ERROR: heap out of memory）导致 502，
+      # 因此旧值取 320。压到 256 是为 2 GB 档腾预算，需在 20 并发下复测；
+      # 若出现 502，回退到 320 并同步把 FRONTEND_MEM_LIMIT 改回 448m
+      NODE_OPTIONS: "--max-old-space-size=256"
     expose:
       - "3000"
     healthcheck:
@@ -338,7 +346,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    mem_limit: ${FRONTEND_MEM_LIMIT:-512m}
+    mem_limit: ${FRONTEND_MEM_LIMIT:-400m}
     logging: *default-logging
 
   nginx:
