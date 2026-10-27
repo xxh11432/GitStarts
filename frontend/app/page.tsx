@@ -1,74 +1,34 @@
 import Link from 'next/link';
 import {
   ArrowUpRight,
-  History,
-  MessageSquare,
-  Scale,
-  Search,
-  Sparkles,
-  Trophy,
+  Boxes,
+  Brain,
+  ChartColumn,
+  Database,
+  Gamepad2,
+  LayoutTemplate,
+  Server,
+  ShieldCheck,
+  Smartphone,
+  Terminal,
+  Wrench,
+  type LucideIcon,
 } from 'lucide-react';
 
 import ChatLauncher from '@/components/ChatLauncher';
 import ExamplePrompts, { type ExamplePrompt } from '@/components/ExamplePrompts';
+import RepoCard from '@/components/repo-card';
+import SampleDossier from '@/components/sample-dossier';
 import SectionHeading from '@/components/section-heading';
+import { fetchMeta, fetchRank } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 const examples: ExamplePrompt[] = [
   { label: '自托管团队知识库', query: '帮我找一个可 Docker 自托管的中文知识库' },
   { label: '本地 AI 笔记工具', query: '有没有本地优先、支持 AI 摘要的笔记工具？' },
   { label: 'Docker 监控面板', query: '推荐一个可 Docker 部署的监控面板' },
   { label: '中文全文检索', query: '哪些开源项目支持中文全文检索并且许可宽松？' },
-];
-
-const MODULES = [
-  {
-    index: '01',
-    href: '/chat',
-    title: 'AI 对话',
-    desc: '描述场景与硬条件，AI 检索仓库档案、给出带证据的候选，并支持多轮追问。',
-    cta: '开始对话',
-    icon: MessageSquare,
-  },
-  {
-    index: '02',
-    href: '/repos',
-    title: '仓库档案库',
-    desc: '按平台、分类、语言与许可证组合筛选，每条记录都能回到仓库原文核对。',
-    cta: '浏览档案',
-    icon: Search,
-  },
-  {
-    index: '03',
-    href: '/rank',
-    title: '排行榜',
-    desc: '总星标、本周活跃、新晋等多个榜单，用公开指标观察项目的长期与近期状态。',
-    cta: '查看榜单',
-    icon: Trophy,
-  },
-  {
-    index: '04',
-    href: '/match',
-    title: '语义匹配',
-    desc: '把需求抽成结构化条件，向量召回后重排，并按四项权重给出可核对的契合度。',
-    cta: '进入匹配',
-    icon: Sparkles,
-  },
-  {
-    index: '05',
-    href: '/compare',
-    title: '深度对比',
-    desc: '2–4 个候选按 8 个维度横向展开，每个单元格附 README 或 manifest 证据。',
-    cta: '打开对比',
-    icon: Scale,
-  },
-  {
-    index: '06',
-    href: '/me/conversations',
-    title: '会话与资产',
-    desc: '对话、想法、对比与收藏按账号保存，重新登录后仍可回看与继续。',
-    cta: '查看我的',
-    icon: History,
-  },
 ];
 
 const FLOW = [
@@ -78,19 +38,31 @@ const FLOW = [
   { index: '05', label: '深度对比', desc: '2–4 个候选逐项对照' },
 ];
 
-const BOUNDARIES = [
-  '只引用站内索引与 README / manifest 证据',
-  '没有依据时明确写「信息不足」，不猜许可与功能',
-  '契合度只用于排序，不是质量结论',
-  '许可证与部署方式以仓库原文为准',
-];
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  人工智能: Brain,
+  前端: LayoutTemplate,
+  后端: Server,
+  数据科学: ChartColumn,
+  数据库: Database,
+  devops: Terminal,
+  安全: ShieldCheck,
+  移动开发: Smartphone,
+  游戏: Gamepad2,
+  开发工具: Wrench,
+  其他: Boxes,
+};
 
-export default function HomePage() {
+export default async function HomePage() {
+  const [hotRepos, meta] = await Promise.all([
+    fetchRank('total', undefined, 9),
+    fetchMeta(),
+  ]);
+
   return (
     <div className="flex flex-col gap-14 sm:gap-16">
       <section className="relative overflow-hidden rounded-xl border border-border bg-card">
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-dots-soft opacity-70" />
-        <div className="relative grid gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:px-10 lg:py-14">
+        <div className="relative grid gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:px-10 lg:py-14">
           <div className="stagger flex flex-col gap-6">
             <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
               <span className="inline-flex items-center gap-2 text-primary">
@@ -113,55 +85,44 @@ export default function HomePage() {
             <ExamplePrompts items={examples} />
           </div>
 
-          <div className="stagger rounded-xl border border-border bg-background/70 p-5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-              Scope / 能力边界
-            </p>
-            <ul className="mt-3 flex flex-col gap-2.5">
-              {BOUNDARIES.map((item) => (
-                <li key={item} className="flex gap-2 text-[12px] leading-relaxed text-muted-foreground">
-                  <span aria-hidden className="mt-1.5 size-1 shrink-0 bg-primary" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-4 border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
-              对话入口在 01，候选清单在 04，横向对照在 05。每个结论都要求能回到证据。
-            </p>
-          </div>
+          <SampleDossier />
         </div>
       </section>
 
-      <section className="flex flex-col gap-5">
-        <SectionHeading index="01–06" title="功能入口" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {MODULES.map((module) => {
-            const Icon = module.icon;
+      <section className="flex flex-col gap-4">
+        <SectionHeading index="01" title="浏览分类" href="/repos" actionLabel="全部分类" />
+        <div className="flex flex-wrap gap-2">
+          {meta.categories.map((category) => {
+            const Icon = CATEGORY_ICONS[category.slug] ?? Boxes;
             return (
               <Link
-                key={module.href}
-                href={module.href}
-                className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+                key={category.slug}
+                href={`/repos?category=${encodeURIComponent(category.slug)}`}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-muted text-primary">
-                    <Icon className="size-4" aria-hidden />
-                  </span>
-                  <span className="font-mono text-[10px] text-muted-foreground">{module.index}</span>
-                </div>
-                <div>
-                  <h2 className="text-[15px] font-semibold text-foreground">{module.title}</h2>
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                    {module.desc}
-                  </p>
-                </div>
-                <span className="mt-auto inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground transition-colors group-hover:text-primary">
-                  {module.cta}
-                  <ArrowUpRight className="size-3" aria-hidden />
+                <Icon className="size-4 text-primary" aria-hidden />
+                {category.name}
+                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                  {category.count}
                 </span>
               </Link>
             );
           })}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <SectionHeading
+          index="02"
+          title="热门开源项目推荐"
+          count={hotRepos.length}
+          href="/rank"
+          actionLabel="查看排行榜"
+        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {hotRepos.map((repo) => (
+            <RepoCard key={repo.id} repo={repo} />
+          ))}
         </div>
       </section>
 
