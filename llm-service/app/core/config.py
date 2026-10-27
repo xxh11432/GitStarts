@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     qdrant_collection: str = "repo_chunks"
     # 低内存部署：向量与 HNSW 落盘，避免集合常驻内存随仓库数增长
     qdrant_on_disk: bool = True
+    # Qdrant 查询路径：HNSW 图只有几 MB，pinned 后不再随机读盘
+    qdrant_hnsw_memory: Literal["cold", "cached", "pinned"] = "pinned"
+    # 标量量化：int8 常驻内存，原始 float32 仍落盘用于 rescore
+    qdrant_quantization_enabled: bool = False
+    qdrant_quantization_quantile: float = 0.99
+    qdrant_quantization_memory: Literal["cold", "cached", "pinned"] = "pinned"
+    qdrant_quantization_rescore: bool = True
+    qdrant_quantization_oversampling: float = 2.0
     embedding_batch_size: int = 16
     index_page_size: int = 100
     index_chunk_target_tokens: int = 600

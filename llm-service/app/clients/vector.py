@@ -125,6 +125,15 @@ class VectorStore:
         created = False
         exists = await client.collection_exists(self.collection)
         if not exists:
+            quantization = None
+            if self._settings.qdrant_quantization_enabled:
+                quantization = models.ScalarQuantization(
+                    scalar=models.ScalarQuantizationConfig(
+                        type=models.ScalarType.INT8,
+                        quantile=self._settings.qdrant_quantization_quantile,
+                        memory=models.Memory(self._settings.qdrant_quantization_memory),
+                    )
+                )
             await client.create_collection(
                 collection_name=self.collection,
                 vectors_config=models.VectorParams(
@@ -133,7 +142,11 @@ class VectorStore:
                     # 低内存部署：向量落盘（mmap），避免集合常驻内存随规模增长
                     on_disk=self._settings.qdrant_on_disk,
                 ),
-                hnsw_config=models.HnswConfigDiff(on_disk=self._settings.qdrant_on_disk),
+                # HNSW 图常驻内存，避免查询时逐跳读盘
+                hnsw_config=models.HnswConfigDiff(
+                    memory=models.Memory(self._settings.qdrant_hnsw_memory),
+                ),
+                quantization_config=quantization,
             )
             created = True
             logger.info("collection_created", collection=self.collection)
@@ -159,11 +172,20 @@ class VectorStore:
         client = self._connect()
         if not await client.collection_exists(self.collection):
             return []
+        search_params = None
+        if self._settings.qdrant_quantization_enabled:
+            search_params = models.SearchParams(
+                quantization=models.QuantizationSearchParams(
+                    rescore=self._settings.qdrant_quantization_rescore,
+                    oversampling=self._settings.qdrant_quantization_oversampling,
+                )
+            )
         response = await client.query_points(
             collection_name=self.collection,
             query=vector,
             limit=max(1, limit),
             query_filter=query_filter,
+            search_params=search_params,
             with_payload=True,
         )
         hits: list[VectorHit] = []

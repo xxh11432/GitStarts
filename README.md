@@ -271,7 +271,13 @@ uv run python -m worker
 | `EMBEDDING_PROVIDER` | `api`（默认，硅基流动）或 `fastembed`（本地离线备用） |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` | embedding 供应商地址与密钥，独立于对话供应商；留空时回落到 `LLM_BASE_URL` / `LLM_API_KEY` |
 | `EMBEDDING_BATCH_SIZE` | 单次 embedding 请求文本数（默认 16，受供应商批量上限与限流约束） |
-| `QDRANT_ON_DISK` | 向量/HNSW 是否落盘（默认 `true`，低内存部署必开；仅对新建集合生效） |
+| `QDRANT_ON_DISK` | 向量是否落盘（默认 `true`，低内存部署必开；仅对新建集合生效） |
+| `QDRANT_HNSW_MEMORY` | HNSW 图的内存策略 `cold` / `cached` / `pinned`（默认 `pinned`，图常驻内存避免查询随机读盘） |
+| `QDRANT_QUANTIZATION_ENABLED` | 是否启用 int8 标量量化（默认 `false`；2C2G 低内存部署开启后量化向量常驻、原始向量落盘做 rescore；仅对新建集合生效，已有集合需 PATCH 集合配置） |
+| `QDRANT_QUANTIZATION_QUANTILE` | 标量量化分位数（默认 `0.99`） |
+| `QDRANT_QUANTIZATION_MEMORY` | 量化向量的内存策略 `cold` / `cached` / `pinned`（默认 `pinned`） |
+| `QDRANT_QUANTIZATION_RESCORE` | 查询是否用原始向量 rescore（默认 `true`，关闭会明显掉召回） |
+| `QDRANT_QUANTIZATION_OVERSAMPLING` | rescore 过采样倍数（默认 `2.0`） |
 | `PREWARM_MODELS` | 仅 `EMBEDDING_PROVIDER=fastembed` 时使用：镜像构建期内置本地模型（默认 `false`） |
 | `INTERNAL_TOKEN` | 服务间调用鉴权（M0 起） |
 | `BACKEND_URL` | llm-service 访问 backend 内部接口的地址（Compose 内为 `http://backend:8080`） |
@@ -387,7 +393,7 @@ GitStarts/
 
 - **MySQL**：`repositories`（仓库主表，含 `category`、`platform` / `platforms`、`latest_release_tag` / `latest_release_at`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `favorites`（收藏与备注，唯一键 `user_id + repo_id`）+ `users` / `conversations` / `messages` / `usage_daily` / `user_profiles` + `ai_metrics`（请求级 token、延迟、结果，供成本看板与告警）。
 - **Release 与多平台**：每天用 GitHub GraphQL 批量刷新 `latestRelease`（每批 50 个仓库，单次最多 1000 个）；`release_checked_at` 记录检查时间，无 Release 的仓库也记录，避免重复请求。`platforms` 由 topics / 描述 / 语言规则推导，供列表卡展示与匹配条件过滤使用。
-- **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。
+- **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。低内存部署可开启 int8 标量量化：量化向量与 HNSW 图 `pinned` 常驻内存（约 54M + 7M），原始 float32 向量仍落盘，仅用于查询时对 Top-K 候选 rescore（`oversampling=2`），避免 2C2G 上 mmap 反复缺页读盘。
 - **缓存**：匹配结果 10 分钟、对比结果 7 天、对比 checkpoint 1 小时、榜单与元数据 5 分钟；索引 worker 用 Redis 锁 + 游标实现断点续跑。
 - **评测**：`llm-service/tests/eval/dataset.jsonl`（24 条需求）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；`python -m tests.eval.run_eval` / `run_compare_eval` 分别生成匹配与对比报告。
 
