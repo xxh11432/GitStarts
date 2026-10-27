@@ -84,7 +84,7 @@ services:
     expose:
       - "6333"
       - "6334"
-    mem_limit: ${QDRANT_MEM_LIMIT:-112m}
+    mem_limit: ${QDRANT_MEM_LIMIT:-160m}
     logging: *default-logging
 
   backend:
@@ -291,7 +291,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - model-cache:/models
-    mem_limit: ${WORKER_MEM_LIMIT:-128m}
+    mem_limit: ${WORKER_MEM_LIMIT:-192m}
     logging: *default-logging
 
   alert-worker:
