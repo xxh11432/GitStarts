@@ -53,3 +53,8 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+# Local docs & tooling (not tracked in remote)
+doc/
+.trae/
+_profile_readme/

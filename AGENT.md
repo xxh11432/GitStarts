@@ -27,7 +27,7 @@ GitStars（仓库内亦称 GitStarts）是"开源方案匹配与对比平台"：
 
 基础设施：MySQL 8、Redis 7、Qdrant 1.x、Nginx、Docker Compose。
 当前进度：M0–M7 已完成（压测 / Lighthouse 需在预发布环境执行并登记结果）。
-方案与评测说明见 [完整方案](doc/AI匹配与对比平台完整方案.md)、[技术方案](doc/技术方案.md)、[doc/eval/](doc/eval/)。
+方案与评测说明见 [完整方案](doc/技术方案/AI匹配与对比平台完整方案.md)、[技术方案](doc/技术方案/技术方案.md)、[doc/eval/](doc/eval/)。
 
 ---
 
