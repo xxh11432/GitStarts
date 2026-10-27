@@ -32,6 +32,9 @@ STATE_FILE = Path(os.environ.get("ALERT_STATE_FILE", "/var/lib/gitstars-alert/st
 SELF_CONTAINER = os.environ.get("ALERT_SELF_CONTAINER", "gs-alert-worker")
 
 DEDUP_SECONDS = int(os.environ.get("ALERT_DEDUP_SECONDS", "1800"))
+# 预算告警是「当日累计」性质：value 每小时都会变化，若按整行 detail 去重会反复触发。
+# 预算项按 code+day 去重，当天每个预算项只推送一次。
+BUDGET_DEDUP_SECONDS = int(os.environ.get("ALERT_BUDGET_DEDUP_SECONDS", "86400"))
 HEALTH_REALERT_SECONDS = int(os.environ.get("ALERT_HEALTH_REALERT_SECONDS", "7200"))
 HEARTBEAT_SECONDS = int(os.environ.get("ALERT_HEARTBEAT_SECONDS", "3600"))
 MAX_PER_HOUR = int(os.environ.get("ALERT_MAX_PER_HOUR", "10"))
@@ -55,6 +58,7 @@ for _svc, _rule, _pattern, _level, _context in RULES:
 NOISE = re.compile(r"读取 README 失败|Not found @TableId annotation|DefaultSqlInjector")
 
 DOCKER_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s")
+BUDGET_ALERT_RE = re.compile(r"code=(\S+)\s+day=(\S+)")
 
 
 class _UnixHTTPConnection(http.client.HTTPConnection):
@@ -179,6 +183,16 @@ def match_lines(lines: list[str], pattern: str, context: int) -> list[str]:
                 chunk += [strip_docker_ts(x) for x in lines[idx + 1: idx + 1 + context]]
             hits.append("\n".join(chunk))
     return hits
+
+
+def budget_hits(hits: list[str]) -> list[tuple[str, str, str]]:
+    """按 code+day 归组预算告警，每个预算项当天只保留最后一条日志。"""
+    latest: dict[tuple[str, str], str] = {}
+    for line in hits:
+        m = BUDGET_ALERT_RE.search(line)
+        if m:
+            latest[(m.group(1), m.group(2))] = line
+    return [(code, day, line) for (code, day), line in latest.items()]
 
 
 def sign_payload(payload: dict) -> dict:
@@ -322,6 +336,16 @@ def collect(state: dict, now: float) -> list[dict]:
             hits = match_lines(lines, pattern, context)
             if not hits:
                 continue
+            if rule == "ops-budget":
+                # 预算告警 value 每小时变化，按 code+day 拆成独立告警，保证每个预算项每天只推一次。
+                for code, day, line in budget_hits(hits):
+                    alerts.append({
+                        "name": name, "rule": rule, "level": level,
+                        "detail": f"命中 1 条：\n```\n{line[:2500]}\n```",
+                        "cooldown": BUDGET_DEDUP_SECONDS,
+                        "key": f"{name}|{rule}|{code}|{day}",
+                    })
+                continue
             detail = "\n---\n".join(hits[-4:])
             alerts.append({
                 "name": name, "rule": rule, "level": level,
@@ -386,7 +410,7 @@ def run_once(dry_run: bool = False) -> int:
             print(alert["detail"][:500])
             continue
 
-        sig = hashlib.sha1(
+        sig = alert.get("key") or hashlib.sha1(
             f"{alert['name']}|{alert['rule']}|{alert['detail'][:160]}".encode("utf-8")
         ).hexdigest()
         if now - seen.get(sig, 0) < alert["cooldown"]:
