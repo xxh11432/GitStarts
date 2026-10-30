@@ -265,6 +265,7 @@ uv run python -m worker
 | `SESSION_COOKIE_SECURE` | 会话 Cookie 是否仅 HTTPS 发送；生产开启，本地 HTTP 需为 `false` |
 | `QUOTA_CHAT_DAILY` / `QUOTA_COMPARE_DAILY` | 每日对话 / 深度对比额度（默认 30 / 3） |
 | `QUOTA_TOKEN_DAILY` | 单用户日 token 成本预算（默认 200000，0 表示关闭阻断） |
+| `QUOTA_TOKENS_PER_UNIT` | 加权计费：每 N tokens 追加消耗 1 次额度（默认 8000，0 表示纯按次数计） |
 | `QUOTA_REAPER_*` / `QUOTA_LEDGER_RETENTION_DAYS` | 超时预留回收阈值与账本保留天数 |
 | `API_INTERNAL_URL` | 前端 SSR 访问后端的内部地址 |
 | `LLM_BASE_URL` / `LLM_API_KEY` | 模型网关地址与密钥（仅 llm-service 可见） |

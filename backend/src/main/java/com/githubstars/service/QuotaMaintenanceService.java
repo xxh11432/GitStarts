@@ -111,8 +111,9 @@ public class QuotaMaintenanceService {
     }
 
     private int reconcile(LocalDate day) {
+        long tokensPerUnit = quotaService.tokensPerUnit() > 0 ? quotaService.tokensPerUnit() : Long.MAX_VALUE;
         Map<Long, int[]> expected = new HashMap<>();
-        for (Map<String, Object> row : quotaLedgerMapper.countChargedByDay(day)) {
+        for (Map<String, Object> row : quotaLedgerMapper.countChargedByDay(day, tokensPerUnit)) {
             Long userId = asLong(row.get("userId"));
             String kind = String.valueOf(row.get("kind"));
             Long counted = asLong(row.get("cnt"));

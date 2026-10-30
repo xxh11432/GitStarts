@@ -34,13 +34,28 @@ public interface UsageDailyMapper extends BaseMapper<UsageDaily> {
                                 @Param("day") LocalDate day,
                                 @Param("limit") int limit);
 
-    @Update("UPDATE usage_daily SET chat_count = GREATEST(chat_count - 1, 0) " +
+    @Update("UPDATE usage_daily SET chat_count = GREATEST(chat_count - #{units}, 0) " +
             "WHERE user_id = #{userId} AND day = #{day}")
-    int decrementChat(@Param("userId") Long userId, @Param("day") LocalDate day);
+    int decrementChat(@Param("userId") Long userId, @Param("day") LocalDate day,
+                      @Param("units") int units);
 
-    @Update("UPDATE usage_daily SET compare_count = GREATEST(compare_count - 1, 0) " +
+    @Update("UPDATE usage_daily SET compare_count = GREATEST(compare_count - #{units}, 0) " +
             "WHERE user_id = #{userId} AND day = #{day}")
-    int decrementCompare(@Param("userId") Long userId, @Param("day") LocalDate day);
+    int decrementCompare(@Param("userId") Long userId, @Param("day") LocalDate day,
+                         @Param("units") int units);
+
+    /**
+     * 加权计费：commit 后按 token 成本追加当日额度占用（不参与 limit 判断）。
+     */
+    @Update("UPDATE usage_daily SET chat_count = chat_count + #{extra} " +
+            "WHERE user_id = #{userId} AND day = #{day}")
+    int addChatCount(@Param("userId") Long userId, @Param("day") LocalDate day,
+                     @Param("extra") int extra);
+
+    @Update("UPDATE usage_daily SET compare_count = compare_count + #{extra} " +
+            "WHERE user_id = #{userId} AND day = #{day}")
+    int addCompareCount(@Param("userId") Long userId, @Param("day") LocalDate day,
+                        @Param("extra") int extra);
 
     @Update("UPDATE usage_daily SET tokens_in = tokens_in + #{tokensIn}, " +
             "tokens_out = tokens_out + #{tokensOut} " +

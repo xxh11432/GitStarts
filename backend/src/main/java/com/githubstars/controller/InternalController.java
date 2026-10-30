@@ -10,7 +10,6 @@ import com.githubstars.dto.IndexMarkRequest;
 import com.githubstars.dto.IndexRepoPage;
 import com.githubstars.dto.MessageCreateRequest;
 import com.githubstars.dto.QuotaCommitRequest;
-import com.githubstars.dto.QuotaRefundRequest;
 import com.githubstars.dto.QuotaReleaseRequest;
 import com.githubstars.dto.QuotaReserveRequest;
 import com.githubstars.dto.QuotaReserveResponse;
@@ -18,7 +17,6 @@ import com.githubstars.dto.QuotaResponse;
 import com.githubstars.dto.RepoBatchRequest;
 import com.githubstars.dto.RepoDocumentUpsertRequest;
 import com.githubstars.dto.RepoResponse;
-import com.githubstars.entity.QuotaLedger;
 import com.githubstars.security.OAuth2UserPrincipal;
 import com.githubstars.service.ComparisonService;
 import com.githubstars.service.ConversationService;
@@ -126,24 +124,6 @@ public class InternalController {
         }
         boolean ok = quotaService.release(request.idemKey(), request.reason());
         return Map.of("ok", ok);
-    }
-
-    /**
-     * 运营工具：按幂等键或 requestId 补退一次额度。
-     */
-    @PostMapping("/quota/refund")
-    public Map<String, Object> refundQuota(@RequestBody QuotaRefundRequest request) {
-        boolean ok = quotaService.refund(request.idemKey(), request.requestId(), request.reason());
-        return Map.of("ok", ok);
-    }
-
-    /**
-     * 运营工具：按 requestId / idemKey 查询扣费账本，便于对账与申诉。
-     */
-    @GetMapping("/quota/ledger")
-    public List<QuotaLedger> quotaLedger(@RequestParam(required = false) String idemKey,
-                                         @RequestParam(required = false) String requestId) {
-        return quotaService.ledger(idemKey, requestId);
     }
 
     /**

@@ -172,8 +172,9 @@ class BackendClient:
         tokens_in: int = 0,
         tokens_out: int = 0,
         request_id: str | None = None,
-    ) -> None:
-        await self._request(
+    ) -> bool:
+        """返回后端是否接受结算；ok=false 表示账本状态已变，需告警而不是静默忽略。"""
+        body = await self._request(
             "POST",
             "/internal/quota/commit",
             json_body={
@@ -185,6 +186,7 @@ class BackendClient:
                 "requestId": request_id,
             },
         )
+        return isinstance(body, dict) and bool(body.get("ok"))
 
     async def release_quota(
         self,
@@ -193,8 +195,9 @@ class BackendClient:
         kind: str,
         idem_key: str,
         reason: str | None = None,
-    ) -> None:
-        await self._request(
+    ) -> bool:
+        """返回后端是否接受归还；ok=false 表示账本行不存在或状态不可归还。"""
+        body = await self._request(
             "POST",
             "/internal/quota/release",
             json_body={
@@ -204,6 +207,7 @@ class BackendClient:
                 "reason": reason,
             },
         )
+        return isinstance(body, dict) and bool(body.get("ok"))
 
     async def get_conversation(self, conversation_id: int, *, user_id: int) -> dict[str, Any]:
         """扣费前的会话归属校验；不存在或不属于该用户时抛 404。"""

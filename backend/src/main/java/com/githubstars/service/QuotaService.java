@@ -45,17 +45,20 @@ public class QuotaService {
     private final int chatLimit;
     private final int compareLimit;
     private final long tokenDailyLimit;
+    private final long tokensPerUnit;
 
     public QuotaService(UsageDailyMapper usageDailyMapper,
                         QuotaLedgerMapper quotaLedgerMapper,
                         @Value("${app.quota.chat-daily:30}") int chatLimit,
                         @Value("${app.quota.compare-daily:3}") int compareLimit,
-                        @Value("${app.quota.token-daily:200000}") long tokenDailyLimit) {
+                        @Value("${app.quota.token-daily:200000}") long tokenDailyLimit,
+                        @Value("${app.quota.tokens-per-unit:8000}") long tokensPerUnit) {
         this.usageDailyMapper = usageDailyMapper;
         this.quotaLedgerMapper = quotaLedgerMapper;
         this.chatLimit = chatLimit;
         this.compareLimit = compareLimit;
         this.tokenDailyLimit = tokenDailyLimit;
+        this.tokensPerUnit = tokensPerUnit;
     }
 
     public QuotaResponse current(Long userId) {
@@ -90,8 +93,9 @@ public class QuotaService {
                 if (STATE_RESERVED.equals(existing.getState())) {
                     quotaLedgerMapper.touchReserved(idemKey, now);
                 }
-                int used = existing.getUsedAfter() == null
-                        ? used(userId, day, kind) : existing.getUsedAfter();
+                // 跨天重放时旧行记录的是前一天的用量，必须按今天重算，否则前端会显示错误余量
+                int used = day.equals(existing.getDay()) && existing.getUsedAfter() != null
+                        ? existing.getUsedAfter() : used(userId, day, kind);
                 return new Reservation(true, used, limit, idemKey, true, null);
             }
             // released / refunded：上次失败已归还，本次重试重新占位。
@@ -145,12 +149,23 @@ public class QuotaService {
             return false;
         }
         usageDailyMapper.addTokens(userId, row.getDay(), in, out);
-        if (requestId != null && !requestId.isBlank()) {
-            QuotaLedger patch = new QuotaLedger();
-            patch.setIdemKey(idemKey);
-            patch.setRequestId(requestId);
-            quotaLedgerMapper.updateById(patch);
+        // 加权计费：除占用 1 次额度外，按 token 成本追加消耗当日额度
+        int extra = extraUnits(in, out);
+        if (extra > 0) {
+            if (kind == QuotaKind.CHAT) {
+                usageDailyMapper.addChatCount(userId, row.getDay(), extra);
+            } else {
+                usageDailyMapper.addCompareCount(userId, row.getDay(), extra);
+            }
         }
+        // 回写加权后的真实用量：重放与对账都以 used_after 为准
+        QuotaLedger patch = new QuotaLedger();
+        patch.setIdemKey(idemKey);
+        patch.setUsedAfter(used(userId, row.getDay(), kind));
+        if (requestId != null && !requestId.isBlank()) {
+            patch.setRequestId(requestId);
+        }
+        quotaLedgerMapper.updateById(patch);
         return true;
     }
 
@@ -169,11 +184,7 @@ public class QuotaService {
         QuotaKind kind = QuotaKind.from(row.getKind());
         LocalDate day = row.getDay() == null ? LocalDate.now(ZONE) : row.getDay();
         if (Boolean.TRUE.equals(row.getCharged())) {
-            if (kind == QuotaKind.CHAT) {
-                usageDailyMapper.decrementChat(row.getUserId(), day);
-            } else {
-                usageDailyMapper.decrementCompare(row.getUserId(), day);
-            }
+            refundUnits(row, kind, day);
         }
         int used = used(row.getUserId(), day, kind);
         quotaLedgerMapper.markReleased(idemKey,
@@ -207,11 +218,7 @@ public class QuotaService {
         QuotaKind kind = QuotaKind.from(row.getKind());
         LocalDate day = row.getDay() == null ? LocalDate.now(ZONE) : row.getDay();
         if (Boolean.TRUE.equals(row.getCharged())) {
-            if (kind == QuotaKind.CHAT) {
-                usageDailyMapper.decrementChat(row.getUserId(), day);
-            } else {
-                usageDailyMapper.decrementCompare(row.getUserId(), day);
-            }
+            refundUnits(row, kind, day);
         }
         int used = used(row.getUserId(), day, kind);
         quotaLedgerMapper.markRefunded(key,
@@ -284,6 +291,38 @@ public class QuotaService {
 
     private int limitOf(QuotaKind kind) {
         return kind == QuotaKind.CHAT ? chatLimit : compareLimit;
+    }
+
+    /**
+     * 加权计费折算：每 tokens-per-unit 个 token 追加消耗 1 次额度；0 表示纯按次数计。
+     */
+    private int extraUnits(long tokensIn, long tokensOut) {
+        if (tokensPerUnit <= 0) {
+            return 0;
+        }
+        long total = Math.max(tokensIn, 0) + Math.max(tokensOut, 0);
+        return (int) Math.min(total / tokensPerUnit, Integer.MAX_VALUE);
+    }
+
+    /**
+     * 一笔账本实际占用的额度单位：基础 1 次 + 该笔 token 的加权部分。
+     */
+    private int unitsOf(QuotaLedger row) {
+        return 1 + extraUnits(nonNegative(row.getTokensIn()), nonNegative(row.getTokensOut()));
+    }
+
+    private void refundUnits(QuotaLedger row, QuotaKind kind, LocalDate day) {
+        int units = unitsOf(row);
+        if (kind == QuotaKind.CHAT) {
+            usageDailyMapper.decrementChat(row.getUserId(), day, units);
+        } else {
+            usageDailyMapper.decrementCompare(row.getUserId(), day, units);
+        }
+    }
+
+    /** 供对账任务使用同口径的加权折算。 */
+    public long tokensPerUnit() {
+        return tokensPerUnit;
     }
 
     private ZonedDateTime resetInstant() {

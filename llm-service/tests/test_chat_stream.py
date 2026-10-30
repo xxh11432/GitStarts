@@ -5,7 +5,7 @@ import pytest
 from langchain_core.messages import AIMessageChunk, ToolMessage
 
 from app.api import chat
-from app.clients.backend import QuotaExceededError
+from app.clients.backend import BackendError, QuotaExceededError
 from app.clients.llm import LlmNotConfiguredError
 
 USER_HEADER = {"X-User-Id": "7"}
@@ -28,8 +28,14 @@ class FakeLlm:
 
 
 class FakeBackend:
-    def __init__(self, *, quota_error: QuotaExceededError | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        quota_error: QuotaExceededError | None = None,
+        conversation_error: BackendError | None = None,
+    ) -> None:
         self.quota_error = quota_error
+        self.conversation_error = conversation_error
         self.conversations: list[dict[str, Any]] = []
         self.messages: list[dict[str, Any]] = []
         self.reserves: list[dict[str, Any]] = []
@@ -63,13 +69,17 @@ class FakeBackend:
             "replayed": False,
         }
 
-    async def commit_quota(self, **kwargs: Any) -> None:
+    async def commit_quota(self, **kwargs: Any) -> bool:
         self.commits.append(kwargs)
+        return True
 
-    async def release_quota(self, **kwargs: Any) -> None:
+    async def release_quota(self, **kwargs: Any) -> bool:
         self.releases.append(kwargs)
+        return True
 
     async def get_conversation(self, conversation_id: int, *, user_id: int) -> dict[str, Any]:
+        if self.conversation_error is not None:
+            raise self.conversation_error
         return {"id": conversation_id, "userId": user_id}
 
     async def create_conversation(self, **kwargs: Any) -> int:
@@ -193,6 +203,32 @@ def test_chat_stream_event_order_tool_and_persistence(
     assert backend.commits
     assert backend.commits[0]["idem_key"] == "key-turn-123"
     assert not backend.releases
+
+
+def test_invalid_conversation_does_not_charge(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    llm = FakeLlm([[AIMessageChunk(content="ok")]])
+    backend = FakeBackend(conversation_error=BackendError("会话不存在或无权访问", status=404))
+    _install(monkeypatch, llm, backend)
+
+    response = client.post(
+        CHAT_PATH,
+        headers=USER_HEADER,
+        json={
+            "turnId": "turn-bad",
+            "conversationId": 999,
+            "messages": [{"role": "user", "content": "继续"}],
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "conversation_not_found"
+    # 归属校验失败必须在扣费之前返回：不 reserve、不 commit、不 release
+    assert backend.reserves == []
+    assert backend.commits == []
+    assert backend.releases == []
+    assert not llm.calls
 
 
 def test_chat_stream_requires_login(client) -> None:

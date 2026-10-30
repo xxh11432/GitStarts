@@ -120,15 +120,20 @@ public interface QuotaLedgerMapper extends BaseMapper<QuotaLedger> {
                      @Param("now") LocalDateTime now);
 
     /**
-     * 对账口径：只有 charged=1 且仍处于 reserved / committed 的账本行计入当日用量。
+     * 对账口径：只有 charged=1 且仍处于 reserved / committed 的账本行计入当日用量，
+     * 并把每笔 token 折算成加权单位，与 commit 时的扣减保持一致。
      */
     @Select("""
-            SELECT user_id AS userId, kind AS kind, COUNT(*) AS cnt
+            SELECT user_id AS userId, kind AS kind,
+                   COUNT(*) + CAST(FLOOR(
+                       (COALESCE(SUM(tokens_in), 0) + COALESCE(SUM(tokens_out), 0)) / #{tokensPerUnit}
+                   ) AS SIGNED) AS cnt
             FROM quota_ledger
             WHERE day = #{day} AND charged = 1 AND state IN ('reserved', 'committed')
             GROUP BY user_id, kind
             """)
-    List<Map<String, Object>> countChargedByDay(@Param("day") LocalDate day);
+    List<Map<String, Object>> countChargedByDay(@Param("day") LocalDate day,
+                                                @Param("tokensPerUnit") long tokensPerUnit);
 
     @Delete("DELETE FROM quota_ledger WHERE user_id = #{userId}")
     int deleteByUser(@Param("userId") Long userId);

@@ -32,7 +32,7 @@ class QuotaServiceTest {
     void setUp() {
         usageDailyMapper = mock(UsageDailyMapper.class);
         quotaLedgerMapper = mock(QuotaLedgerMapper.class);
-        service = new QuotaService(usageDailyMapper, quotaLedgerMapper, 30, 3, 200_000);
+        service = new QuotaService(usageDailyMapper, quotaLedgerMapper, 30, 3, 200_000, 8_000);
     }
 
     @Test
@@ -116,10 +116,10 @@ class QuotaServiceTest {
         reserved.setCharged(true);
         when(quotaLedgerMapper.selectForUpdate(any())).thenReturn(reserved);
         when(usageDailyMapper.selectByUserDay(anyLong(), any())).thenReturn(daily(1, 0, 0));
-        when(usageDailyMapper.decrementChat(anyLong(), any())).thenReturn(1);
+        when(usageDailyMapper.decrementChat(anyLong(), any(), anyInt())).thenReturn(1);
 
         assertTrue(service.release("key", "cancelled"));
-        verify(usageDailyMapper).decrementChat(anyLong(), any());
+        verify(usageDailyMapper).decrementChat(anyLong(), any(), eq(1));
         verify(quotaLedgerMapper).markReleased(any(), eq("cancelled"), eq(1), any());
 
         QuotaLedger released = ledger();
@@ -129,7 +129,80 @@ class QuotaServiceTest {
 
         assertTrue(service.release("key", "cancelled"));
         // 两次 release 合计只归还一次
-        verify(usageDailyMapper, times(1)).decrementChat(anyLong(), any());
+        verify(usageDailyMapper, times(1)).decrementChat(anyLong(), any(), anyInt());
+    }
+
+    @Test
+    void crossDayReplayUsesTodayUsage() {
+        QuotaLedger existing = ledger();
+        existing.setState("committed");
+        existing.setDay(LocalDate.now().minusDays(1));
+        existing.setUsedAfter(29);
+        when(quotaLedgerMapper.insertIgnore(any(), anyLong(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(0);
+        when(quotaLedgerMapper.selectForUpdate(any())).thenReturn(existing);
+        when(usageDailyMapper.selectByUserDay(anyLong(), any())).thenReturn(daily(2, 0, 0));
+
+        QuotaService.Reservation reservation = service.reserve(
+                7L, QuotaKind.CHAT, "turn-1", "fp-1", "req-1");
+
+        assertTrue(reservation.allowed());
+        assertTrue(reservation.replayed());
+        assertEquals(2, reservation.used());
+    }
+
+    @Test
+    void commitAddsWeightedExtraUnits() {
+        QuotaLedger reserved = ledger();
+        reserved.setState("reserved");
+        reserved.setCharged(true);
+        reserved.setUsedAfter(1);
+        when(quotaLedgerMapper.selectForUpdate(any())).thenReturn(reserved);
+        when(quotaLedgerMapper.markCommitted(any(), anyLong(), anyLong(), any(), any())).thenReturn(1);
+        when(usageDailyMapper.selectByUserDay(anyLong(), any())).thenReturn(daily(3, 0, 0));
+
+        assertTrue(service.commit(7L, QuotaKind.CHAT, "key", 16_000, 0, "req-1"));
+
+        verify(usageDailyMapper).addTokens(anyLong(), any(), eq(16_000L), eq(0L));
+        // 16000 tokens / 8000 = 2 次额外额度
+        verify(usageDailyMapper).addChatCount(anyLong(), any(), eq(2));
+    }
+
+    @Test
+    void commitWithoutTokensAddsNoExtraUnits() {
+        QuotaLedger reserved = ledger();
+        reserved.setState("reserved");
+        reserved.setCharged(true);
+        reserved.setUsedAfter(1);
+        when(quotaLedgerMapper.selectForUpdate(any())).thenReturn(reserved);
+        when(quotaLedgerMapper.markCommitted(any(), anyLong(), anyLong(), any(), any())).thenReturn(1);
+
+        assertTrue(service.commit(7L, QuotaKind.CHAT, "key", 100, 0, null));
+
+        verify(usageDailyMapper, never()).addChatCount(anyLong(), any(), anyInt());
+        verify(usageDailyMapper, never()).addCompareCount(anyLong(), any(), anyInt());
+    }
+
+    @Test
+    void refundReturnsWeightedUnitsAndIsIdempotent() {
+        QuotaLedger committed = ledger();
+        committed.setState("committed");
+        committed.setCharged(true);
+        committed.setTokensIn(16_000L);
+        committed.setTokensOut(0L);
+        when(quotaLedgerMapper.selectForUpdate(any())).thenReturn(committed);
+        when(usageDailyMapper.selectByUserDay(anyLong(), any())).thenReturn(daily(3, 0, 0));
+
+        assertTrue(service.refund("key", null, "用户申诉补退"));
+        // 基础 1 次 + 16000/8000 = 2 次加权
+        verify(usageDailyMapper).decrementChat(anyLong(), any(), eq(3));
+
+        QuotaLedger refunded = ledger();
+        refunded.setState("refunded");
+        when(quotaLedgerMapper.selectForUpdate(any())).thenReturn(refunded);
+
+        assertTrue(service.refund("key", null, "重复补退"));
+        verify(usageDailyMapper, times(1)).decrementChat(anyLong(), any(), anyInt());
     }
 
     private static QuotaLedger ledger() {

@@ -48,7 +48,7 @@ async def commit_ticket(
     if ticket is None:
         return
     try:
-        await backend.commit_quota(
+        accepted = await backend.commit_quota(
             user_id=ticket.user_id,
             kind=ticket.kind,
             idem_key=ticket.idem_key,
@@ -56,6 +56,12 @@ async def commit_ticket(
             tokens_out=max(tokens_out, 0),
             request_id=request_id,
         )
+        if not accepted:
+            logger.error(
+                "quota_commit_rejected",
+                idem_key=ticket.idem_key,
+                kind=ticket.kind,
+            )
     except Exception as exc:  # 账本结算失败由 reaper / 对账兜底
         logger.error(
             "quota_commit_failed",
@@ -74,14 +80,20 @@ async def release_ticket(
     if ticket is None:
         return
     try:
-        await backend.release_quota(
+        accepted = await backend.release_quota(
             user_id=ticket.user_id,
             kind=ticket.kind,
             idem_key=ticket.idem_key,
             reason=reason,
         )
+        if not accepted:
+            logger.error(
+                "quota_release_rejected",
+                idem_key=ticket.idem_key,
+                kind=ticket.kind,
+            )
     except Exception as exc:
-        logger.warning(
+        logger.error(
             "quota_release_failed",
             idem_key=ticket.idem_key,
             kind=ticket.kind,
