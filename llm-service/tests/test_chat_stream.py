@@ -32,11 +32,45 @@ class FakeBackend:
         self.quota_error = quota_error
         self.conversations: list[dict[str, Any]] = []
         self.messages: list[dict[str, Any]] = []
+        self.reserves: list[dict[str, Any]] = []
+        self.commits: list[dict[str, Any]] = []
+        self.releases: list[dict[str, Any]] = []
 
-    async def reserve_chat_quota(self, user_id: int) -> dict[str, Any]:
+    async def reserve_chat_quota(
+        self,
+        user_id: int,
+        *,
+        client_key: str,
+        fingerprint: str,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
         if self.quota_error is not None:
             raise self.quota_error
-        return {"allowed": True, "used": 1, "limit": 30, "remaining": 29}
+        self.reserves.append(
+            {
+                "user_id": user_id,
+                "client_key": client_key,
+                "fingerprint": fingerprint,
+                "request_id": request_id,
+            }
+        )
+        return {
+            "allowed": True,
+            "used": 1,
+            "limit": 30,
+            "remaining": 29,
+            "idemKey": f"key-{client_key[:8]}",
+            "replayed": False,
+        }
+
+    async def commit_quota(self, **kwargs: Any) -> None:
+        self.commits.append(kwargs)
+
+    async def release_quota(self, **kwargs: Any) -> None:
+        self.releases.append(kwargs)
+
+    async def get_conversation(self, conversation_id: int, *, user_id: int) -> dict[str, Any]:
+        return {"id": conversation_id, "userId": user_id}
 
     async def create_conversation(self, **kwargs: Any) -> int:
         self.conversations.append(kwargs)
@@ -114,7 +148,10 @@ def test_chat_stream_event_order_tool_and_persistence(
         "POST",
         CHAT_PATH,
         headers=USER_HEADER,
-        json={"messages": [{"role": "user", "content": "有没有自托管知识库"}]},
+        json={
+            "turnId": "turn-123",
+            "messages": [{"role": "user", "content": "有没有自托管知识库"}],
+        },
     ) as response:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
@@ -150,6 +187,12 @@ def test_chat_stream_event_order_tool_and_persistence(
     assert [m["role"] for m in backend.messages] == ["user", "assistant"]
     assert backend.messages[1]["content"] == "推荐 dify。"
     assert backend.messages[1]["refs"][0]["fullName"] == "langgenius/dify"
+
+    # 幂等键使用前端 turnId；有产出后必须 commit 而不是 release
+    assert backend.reserves[0]["client_key"] == "turn-123"
+    assert backend.commits
+    assert backend.commits[0]["idem_key"] == "key-turn-123"
+    assert not backend.releases
 
 
 def test_chat_stream_requires_login(client) -> None:

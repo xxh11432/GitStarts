@@ -82,6 +82,8 @@ export async function streamChat(
     conversationId?: number | null;
     ideaId?: number | null;
     messages: ChatPayloadMessage[];
+    /** 同一轮的唯一标识；重试时必须复用，服务端据此幂等扣费 */
+    turnId?: string;
     /** 重试同一轮时置 false，避免服务端重复落库用户消息 */
     persistUser?: boolean;
   },

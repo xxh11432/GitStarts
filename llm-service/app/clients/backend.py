@@ -37,11 +37,12 @@ class QuotaExceededError(BackendError):
         self,
         message: str,
         *,
+        code: str = "quota_exceeded",
         used: int | None = None,
         limit: int | None = None,
         reset_at: str | None = None,
     ) -> None:
-        super().__init__(message, status=429, code="quota_exceeded")
+        super().__init__(message, status=429, code=code)
         self.used = used
         self.limit = limit
         self.reset_at = reset_at
@@ -90,6 +91,7 @@ class BackendClient:
             body = _json_or_empty(response)
             raise QuotaExceededError(
                 str(body.get("message") or "今日配额已用完"),
+                code=str(body.get("code") or "quota_exceeded"),
                 used=body.get("used"),
                 limit=body.get("limit"),
                 reset_at=body.get("resetAt"),
@@ -107,25 +109,107 @@ class BackendClient:
             return None
         return response.json()
 
-    async def reserve_chat_quota(self, user_id: int) -> dict[str, Any]:
+    async def reserve_quota(
+        self,
+        user_id: int,
+        kind: str,
+        *,
+        client_key: str,
+        fingerprint: str,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        """幂等预留：同一 (userId, kind, clientKey, fingerprint) 重试只扣一次。"""
         return await self._request(
             "POST",
             "/internal/quota/reserve",
-            json_body={"userId": user_id, "kind": "chat"},
+            json_body={
+                "userId": user_id,
+                "kind": kind,
+                "clientKey": client_key,
+                "fingerprint": fingerprint,
+                "requestId": request_id,
+            },
         )
 
-    async def reserve_compare_quota(self, user_id: int) -> dict[str, Any]:
-        return await self._request(
+    async def reserve_chat_quota(
+        self,
+        user_id: int,
+        *,
+        client_key: str,
+        fingerprint: str,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.reserve_quota(
+            user_id,
+            "chat",
+            client_key=client_key,
+            fingerprint=fingerprint,
+            request_id=request_id,
+        )
+
+    async def reserve_compare_quota(
+        self,
+        user_id: int,
+        *,
+        client_key: str,
+        fingerprint: str,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.reserve_quota(
+            user_id,
+            "compare",
+            client_key=client_key,
+            fingerprint=fingerprint,
+            request_id=request_id,
+        )
+
+    async def commit_quota(
+        self,
+        *,
+        user_id: int,
+        kind: str,
+        idem_key: str,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        request_id: str | None = None,
+    ) -> None:
+        await self._request(
             "POST",
-            "/internal/quota/reserve",
-            json_body={"userId": user_id, "kind": "compare"},
+            "/internal/quota/commit",
+            json_body={
+                "userId": user_id,
+                "kind": kind,
+                "idemKey": idem_key,
+                "tokensIn": tokens_in,
+                "tokensOut": tokens_out,
+                "requestId": request_id,
+            },
         )
 
-    async def get_quota(self, user_id: int) -> dict[str, Any]:
-        """只读查询配额，用于在昂贵操作（LLM 解析、落库）之前拦截已耗尽用户。"""
+    async def release_quota(
+        self,
+        *,
+        user_id: int,
+        kind: str,
+        idem_key: str,
+        reason: str | None = None,
+    ) -> None:
+        await self._request(
+            "POST",
+            "/internal/quota/release",
+            json_body={
+                "userId": user_id,
+                "kind": kind,
+                "idemKey": idem_key,
+                "reason": reason,
+            },
+        )
+
+    async def get_conversation(self, conversation_id: int, *, user_id: int) -> dict[str, Any]:
+        """扣费前的会话归属校验；不存在或不属于该用户时抛 404。"""
         return await self._request(
             "GET",
-            "/internal/quota",
+            f"/internal/conversations/{conversation_id}",
             params={"userId": user_id},
         )
 

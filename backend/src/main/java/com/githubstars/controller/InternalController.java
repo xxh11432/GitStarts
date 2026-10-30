@@ -9,12 +9,16 @@ import com.githubstars.dto.IdeaUpdateRequest;
 import com.githubstars.dto.IndexMarkRequest;
 import com.githubstars.dto.IndexRepoPage;
 import com.githubstars.dto.MessageCreateRequest;
+import com.githubstars.dto.QuotaCommitRequest;
+import com.githubstars.dto.QuotaRefundRequest;
+import com.githubstars.dto.QuotaReleaseRequest;
 import com.githubstars.dto.QuotaReserveRequest;
 import com.githubstars.dto.QuotaReserveResponse;
 import com.githubstars.dto.QuotaResponse;
 import com.githubstars.dto.RepoBatchRequest;
 import com.githubstars.dto.RepoDocumentUpsertRequest;
 import com.githubstars.dto.RepoResponse;
+import com.githubstars.entity.QuotaLedger;
 import com.githubstars.security.OAuth2UserPrincipal;
 import com.githubstars.service.ComparisonService;
 import com.githubstars.service.ConversationService;
@@ -80,26 +84,70 @@ public class InternalController {
             throw new IllegalArgumentException("userId 必填");
         }
         QuotaKind kind = QuotaKind.from(request.kind());
-        QuotaService.Reservation reservation = quotaService.reserve(request.userId(), kind);
+        QuotaService.Reservation reservation = quotaService.reserve(request.userId(), kind,
+                request.clientKey(), request.fingerprint(), request.requestId());
         String resetAt = quotaService.resetAt();
 
         if (!reservation.allowed()) {
+            String code = reservation.reason() == null ? "quota_exceeded" : reservation.reason();
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("code", "quota_exceeded");
-            body.put("message", quotaService.limitMessage(kind));
+            body.put("code", code);
+            body.put("message", "token_budget_exceeded".equals(code)
+                    ? quotaService.costLimitMessage() : quotaService.limitMessage(kind));
             body.put("kind", kind.value());
             body.put("used", reservation.used());
             body.put("limit", reservation.limit());
             body.put("resetAt", resetAt);
+            body.put("idemKey", reservation.idemKey());
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
         }
 
         return ResponseEntity.ok(new QuotaReserveResponse(true, reservation.used(), reservation.limit(),
-                reservation.remaining(), resetAt));
+                reservation.remaining(), resetAt, reservation.idemKey(), reservation.replayed()));
+    }
+
+    @PostMapping("/quota/commit")
+    public Map<String, Object> commitQuota(@RequestBody QuotaCommitRequest request) {
+        if (request.userId() == null || request.idemKey() == null || request.idemKey().isBlank()) {
+            throw new IllegalArgumentException("userId / idemKey 必填");
+        }
+        QuotaKind kind = QuotaKind.from(request.kind());
+        boolean ok = quotaService.commit(request.userId(), kind, request.idemKey(),
+                request.tokensIn() == null ? 0 : request.tokensIn(),
+                request.tokensOut() == null ? 0 : request.tokensOut(),
+                request.requestId());
+        return Map.of("ok", ok);
+    }
+
+    @PostMapping("/quota/release")
+    public Map<String, Object> releaseQuota(@RequestBody QuotaReleaseRequest request) {
+        if (request.idemKey() == null || request.idemKey().isBlank()) {
+            throw new IllegalArgumentException("idemKey 必填");
+        }
+        boolean ok = quotaService.release(request.idemKey(), request.reason());
+        return Map.of("ok", ok);
     }
 
     /**
-     * 配额只读探测：llm-service 在 LLM 解析与落库前先拦截已耗尽用户。
+     * 运营工具：按幂等键或 requestId 补退一次额度。
+     */
+    @PostMapping("/quota/refund")
+    public Map<String, Object> refundQuota(@RequestBody QuotaRefundRequest request) {
+        boolean ok = quotaService.refund(request.idemKey(), request.requestId(), request.reason());
+        return Map.of("ok", ok);
+    }
+
+    /**
+     * 运营工具：按 requestId / idemKey 查询扣费账本，便于对账与申诉。
+     */
+    @GetMapping("/quota/ledger")
+    public List<QuotaLedger> quotaLedger(@RequestParam(required = false) String idemKey,
+                                         @RequestParam(required = false) String requestId) {
+        return quotaService.ledger(idemKey, requestId);
+    }
+
+    /**
+     * 配额只读查询：供运营看板与排障使用。
      */
     @GetMapping("/quota")
     public QuotaResponse quota(@RequestParam Long userId) {
@@ -204,6 +252,16 @@ public class InternalController {
     public Map<String, Object> createConversation(@RequestBody ConversationCreateRequest request) {
         Long id = conversationService.create(request);
         return Map.of("id", id);
+    }
+
+    /**
+     * 扣费前的会话归属校验：不存在或不属于该用户时返回 404，避免白扣额度。
+     */
+    @GetMapping("/conversations/{id}")
+    public Map<String, Object> conversation(@PathVariable Long id,
+                                            @RequestParam Long userId) {
+        conversationService.exists(userId, id);
+        return Map.of("id", id, "userId", userId);
     }
 
     @PostMapping("/messages")

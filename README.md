@@ -82,14 +82,14 @@ fit = 0.45 × 语义相关
 - 部署：Docker Compose 编排 MySQL / Redis / 后端 / 前端 / Nginx
 - 缓存：热点数据 Redis 缓存
 - **M0 工程基座**：`llm-service`（FastAPI + structlog + requestId）、`ingest-worker`、Qdrant、Nginx `/ai/` 与 `/api/internal/` 隔离、新视觉设计令牌与首页骨架
-- **M1 账号会话与配额**：GitHub OAuth 登录闭环、Spring Session Redis（7 天）、每日配额 Redis 原子扣减、`/ai/**` 未登录 401（Nginx auth_request）、登录页与 `/me`、`/compare` 路由保护
+- **M1 账号会话与配额**：GitHub OAuth 登录闭环、Spring Session Redis（7 天）、每日配额 MySQL 原子扣减 + 幂等账本、`/ai/**` 未登录 401（Nginx auth_request）、登录页与 `/me`、`/compare` 路由保护
 - **M2 仓库数据补强**：`platform` 规则推导与筛选、许可证与更新时间筛选、详情页 README 摘要与相关推荐、首页平台/统计模块、列表与详情新视觉及移动端筛选抽屉
 - **M3 AI 对话 MVP**：`/ai/chat/stream` SSE 流式（`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error`）、工具调用（`search_repos` / `get_repo` / `get_rank`）、首页对话与仓库卡、会话与消息异步落库
 - **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → fastembed embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 硬过滤 → 向量召回 + 关键词补充 → LLM 重排 ±0.1 → 四维契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 `recall@10` 报告脚本
 - **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
 - **M6 个性化沉淀**：收藏与备注（`favorites`，跨会话一致）；`/me` 完整化（配额、想法、对比、收藏、会话入口）；对比历史 / 想法 / 会话历史的列表与详情；技能 / 兴趣 / 偏好画像与规则推荐位；对比分享链接可撤销、记录可删除；账号删除时清理全部个人数据
 - **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 按 IP 限流 / 关闭图片优化器；Redis AOF 与容器健康检查；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
-- **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比前配额预检；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
+- **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比缓存先于配额判断；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
 - **活跃度采集与排序**：`heat_score`（Star 体量 × 近期推送衰减）随采集更新、启动时回填；`/repos?sort=active`、排行榜「活跃综合榜」与筛选器均支持
 
 **已上线**
@@ -97,7 +97,7 @@ fit = 0.45 × 语义相关
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M0 | 工程基座与视觉系统：`llm-service` 骨架、Qdrant、Nginx `/ai/` 与内部接口隔离 | 已完成 |
-| M1 | GitHub OAuth、会话（Spring Session）、每日配额原子扣减 | 已完成 |
+| M1 | GitHub OAuth、会话（Spring Session）、每日配额原子扣减 + 幂等账本 | 已完成 |
 | M2 | 仓库数据补强：`platform` 字段、许可与更新时间筛选、相关推荐 | 已完成 |
 | M3 | AI 网关与对话 MVP：SSE 流式、工具调用（`search_repos` / `get_repo` / `get_rank`） | 已完成 |
 | M4 | 语义索引与匹配：README 分块 embedding、召回重排、`/ai/match` | 已完成 |
@@ -264,6 +264,8 @@ uv run python -m worker
 | `AUTH_GITHUB_REDIRECT_URI` / `APP_FRONTEND_URL` | 回调地址与登录成功后的前端回跳地址 |
 | `SESSION_COOKIE_SECURE` | 会话 Cookie 是否仅 HTTPS 发送；生产开启，本地 HTTP 需为 `false` |
 | `QUOTA_CHAT_DAILY` / `QUOTA_COMPARE_DAILY` | 每日对话 / 深度对比额度（默认 30 / 3） |
+| `QUOTA_TOKEN_DAILY` | 单用户日 token 成本预算（默认 200000，0 表示关闭阻断） |
+| `QUOTA_REAPER_*` / `QUOTA_LEDGER_RETENTION_DAYS` | 超时预留回收阈值与账本保留天数 |
 | `API_INTERNAL_URL` | 前端 SSR 访问后端的内部地址 |
 | `LLM_BASE_URL` / `LLM_API_KEY` | 模型网关地址与密钥（仅 llm-service 可见） |
 | `LLM_CHAT_MODEL` / `LLM_EMBEDDING_MODEL` | 对话与向量模型（默认 DeepSeek V4 Flash 对话 + 硅基流动 `BAAI/bge-m3`） |
@@ -403,7 +405,7 @@ GitStarts/
 - 会话 Cookie `httpOnly + Secure + SameSite=Lax`，写接口启用 CSRF token；HTTPS 站点若关闭 Secure，backend 启动期直接失败。
 - `/api/internal/**` 外网 404；服务间调用需 `X-Internal-Token`。
 - Nginx 按来源 IP 限流：`/ai/` 3r/s、`/api/` 20r/s、README 摘要 1r/s、登录入口 1r/s；README 单独收紧以保护 GitHub Token 配额。
-- Redis 开启 AOF（everysec），配额计数与对比 checkpoint 重启不丢；`ai_metrics` 按保留期自动清理。
+- Redis 开启 AOF（everysec），对比 checkpoint 重启不丢；配额权威计数与账本落 MySQL，`ai_metrics` 按保留期自动清理。
 - README 与用户输入一律视为不可信：清洗 HTML、工具结果包裹、Markdown 禁止 raw HTML。
 - 只缓存公开 README 并标注来源，不复制全文分发，遵循 GitHub API 条款。
 

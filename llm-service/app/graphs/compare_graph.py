@@ -92,13 +92,16 @@ class CompareEvent:
 
 @dataclass
 class PreparedCompare:
-    requirement: Requirement
+    requirement: Requirement | None
     repo_keys: list[str]
     repos: list[dict[str, Any]]
     cache_key: str
     idea_id: int | None = None
     cached: dict[str, Any] | None = None
     checkpoint: dict[str, Any] | None = field(default=None)
+    # 请求指纹：缓存键与扣费幂等键共用，保证断点续跑同键不重复扣费
+    fingerprint: str = ""
+    request: CompareRequest | None = None
 
 
 @dataclass
@@ -209,12 +212,12 @@ class CompareRunner:
     def tokens_out(self) -> int:
         return self._usage.tokens_out
 
-    async def prepare(self, request: CompareRequest, *, user_id: int) -> PreparedCompare:
+    async def prepare_light(self, request: CompareRequest, *, user_id: int) -> PreparedCompare:
+        """只做廉价校验与请求指纹：repo 存在性、idea 归属、缓存命中，均不触发 LLM。"""
         repo_keys = _unique_repo_keys(request.repo_keys)
         if not 2 <= len(repo_keys) <= 4:
             raise CompareError("请选择 2–4 个互不重复的仓库", code="invalid_repos")
 
-        requirement, idea_id = await self._resolve_requirement(request, user_id)
         try:
             repos = await self._backend.get_repos_batch(repo_keys)
         except BackendError as exc:
@@ -225,12 +228,41 @@ class CompareRunner:
             raise CompareError(f"仓库不存在：{missing[0]}", code="repo_not_found")
         ordered = [by_name[key] for key in repo_keys]
 
+        requirement: Requirement | None = None
+        idea_id = request.idea_id
+        idea_revision: int | None = None
+        raw_text = (request.raw_text or "").strip() or None
+        structured = request.structured.model_dump() if request.structured else None
+
+        if request.structured is not None:
+            requirement = request.structured
+        elif request.idea_id is not None:
+            try:
+                idea = await self._backend.get_idea(request.idea_id, user_id=user_id)
+            except BackendError as exc:
+                raise CompareError("想法不存在或无权访问", code="idea_not_found") from exc
+            idea_id = int(idea.get("id") or request.idea_id)
+            revision = idea.get("revision")
+            idea_revision = int(revision) if isinstance(revision, int) else None
+            stored = idea.get("structured") or {}
+            if stored and (
+                stored.get("must") or stored.get("should") or stored.get("goal")
+            ):
+                requirement = Requirement.model_validate(stored)
+            raw_text = str(idea.get("rawText") or "").strip() or None
+        elif not raw_text:
+            raise CompareError("请提供想法或 ideaId", code="empty_requirement")
+
         key_payload = {
             "userId": user_id,
             "schemaVersion": self._settings.compare_schema_version or SCHEMA_VERSION,
-            "requirement": requirement.model_dump(),
+            "ideaId": idea_id,
+            "ideaRevision": idea_revision,
+            "rawText": raw_text,
+            "structured": structured,
             "repoKeys": repo_keys,
             "docVersions": {key: doc_version(by_name[key]) for key in repo_keys},
+            "force": bool(request.force),
         }
         digest = hashlib.sha256(canonical(key_payload).encode()).hexdigest()
         cache_key = f"cmp:{user_id}:{digest[:48]}"
@@ -250,9 +282,29 @@ class CompareRunner:
             idea_id=idea_id,
             cached=cached,
             checkpoint=checkpoint,
+            fingerprint=digest,
+            request=request,
         )
 
+    async def resolve(self, prepared: PreparedCompare, *, user_id: int) -> None:
+        """扣费后再做 LLM 解析，避免无效请求白烧 token。"""
+        if prepared.requirement is not None:
+            return
+        if prepared.request is None:
+            raise CompareError("请求未初始化", code="compare_failed")
+        requirement, idea_id = await self._resolve_requirement(prepared.request, user_id)
+        prepared.requirement = requirement
+        prepared.idea_id = idea_id
+
+    async def prepare(self, request: CompareRequest, *, user_id: int) -> PreparedCompare:
+        prepared = await self.prepare_light(request, user_id=user_id)
+        await self.resolve(prepared, user_id=user_id)
+        return prepared
+
     async def run(self, prepared: PreparedCompare, *, user_id: int) -> AsyncIterator[CompareEvent]:
+        # 缓存回放不需要重新解析需求；只有真正生成时才要求 requirement 已就绪
+        if prepared.cached is None and prepared.requirement is None:
+            raise CompareError("需求尚未解析", code="compare_failed")
         started = time.perf_counter()
         plan_payload = {
             "dimensions": DIMENSIONS,
@@ -368,7 +420,7 @@ class CompareRunner:
                 return Requirement.model_validate(structured), request.idea_id
             raw_text = str(idea.get("rawText") or "")
             requirement = await parse_requirement(self._llm, raw_text, usage=self._usage)
-            await self._backend.update_idea(request.idea_id, requirement.model_dump())
+            # 对比解析不回写 idea：保持 revision 稳定，断点续跑才能复用同一幂等键
             return requirement, request.idea_id
 
         raw_text = (request.raw_text or "").strip()

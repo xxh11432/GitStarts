@@ -292,6 +292,33 @@ async def test_compare_cache_hit_skips_generation(settings: Settings) -> None:
     assert not llm.calls
 
 
+async def test_compare_cache_replay_does_not_require_llm_parse(settings: Settings) -> None:
+    from app.schemas.compare import CompareRequest
+
+    backend = FakeBackend()
+    cache = FakeCache()
+    runner = _runner(settings, backend=backend, cache=cache)
+    request = CompareRequest(raw_text="自托管知识库", repo_keys=["example/one", "example/two"])
+
+    prepared = await runner.prepare_light(request, user_id=USER_ID)
+    assert prepared.requirement is None
+    await cache.set_json(
+        prepared.cache_key,
+        {"cells": [], "verdict": {}, "comparisonId": 321, "generatedAt": "2026-01-01T00:00:00Z"},
+        60,
+    )
+
+    replay = await runner.prepare_light(request, user_id=USER_ID)
+    assert replay.cached is not None
+    assert replay.requirement is None
+
+    events = [event async for event in runner.run(replay, user_id=USER_ID)]
+    assert events[0].name == "plan"
+    assert events[-1].name == "done"
+    assert events[-1].data["cached"] is True
+    assert not backend.comparisons
+
+
 async def test_compare_resumes_from_checkpoint(settings: Settings) -> None:
     backend = FakeBackend()
     cache = FakeCache()

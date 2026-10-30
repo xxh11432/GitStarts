@@ -45,9 +45,7 @@ class Settings(BaseSettings):
     checkpoint_redis_url: str = "redis://localhost:6379/1"
     internal_token: str = ""
 
-    # Service budgets
-    quota_chat_daily: int = 30
-    quota_compare_daily: int = 3
+    # Service budgets（配额与 token 预算统一由 backend 权威控制）
     compare_concurrency: int = 4
     request_timeout_seconds: float = 120.0
 

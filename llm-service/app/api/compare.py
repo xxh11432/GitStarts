@@ -19,6 +19,12 @@ from app.graphs.compare_graph import CompareError, CompareRunner
 from app.schemas.compare import CompareRequest
 from app.services.embedding import get_embedding_service
 from app.services.metrics import report_request_metric
+from app.services.quota import (
+    commit_ticket,
+    release_ticket,
+    settle_on_cancel,
+    ticket_from,
+)
 
 logger = structlog.get_logger("compare")
 router = APIRouter()
@@ -73,45 +79,14 @@ async def compare(request: Request, body: CompareRequest) -> Any:
         )
 
     backend = BackendClient(settings)
-    # 配额只读探测：prepare 可能触发 LLM 解析与 idea 落库，必须先拦下已耗尽用户。
-    try:
-        quota_view = await backend.get_quota(user_id) or {}
-    except BackendError as exc:
-        logger.warning("compare_quota_probe_failed", error=str(exc))
-        return JSONResponse(
-            status_code=503,
-            content={
-                "code": "backend_unavailable",
-                "message": _MESSAGES["backend_unavailable"],
-            },
-        )
-    compare_view = quota_view.get("compare") or {}
-    probed_used = compare_view.get("used")
-    probed_limit = compare_view.get("limit")
-    if (
-        isinstance(probed_used, int)
-        and isinstance(probed_limit, int)
-        and probed_used >= probed_limit
-    ):
-        return JSONResponse(
-            status_code=429,
-            content={
-                "code": "quota_exceeded",
-                "message": _MESSAGES["quota_exceeded"],
-                "used": probed_used,
-                "limit": probed_limit,
-                "resetAt": quota_view.get("resetAt"),
-            },
-        )
-
     vector = VectorStore(settings)
     cache = CacheClient(settings)
     runner = _build_runner(settings, backend, vector, cache, llm)
 
-    # 先用已解析的需求算 cacheKey：命中缓存时直接回放，不再扣减额度。
+    # 先做廉价校验并用请求指纹算 cacheKey：命中缓存直接回放，不扣额度、不触发 LLM。
     try:
         async with asyncio.timeout(settings.request_timeout_seconds):
-            prepared = await runner.prepare(body, user_id=user_id)
+            prepared = await runner.prepare_light(body, user_id=user_id)
     except TimeoutError:
         await runner.close()
         await cache.close()
@@ -133,17 +108,23 @@ async def compare(request: Request, body: CompareRequest) -> Any:
             content={"code": "backend_unavailable", "message": _MESSAGES["backend_unavailable"]},
         )
 
-    quota: dict[str, Any] = {"compare": "cached" if prepared.cached else "reserved"}
+    quota: dict[str, Any] = {"compare": "cached"}
+    ticket = None
     if prepared.cached is None:
         try:
-            quota = await backend.reserve_compare_quota(user_id)
+            quota = await backend.reserve_compare_quota(
+                user_id,
+                client_key=prepared.fingerprint,
+                fingerprint=prepared.fingerprint,
+                request_id=request_id,
+            )
         except QuotaExceededError as exc:
             await runner.close()
             await cache.close()
             return JSONResponse(
                 status_code=429,
                 content={
-                    "code": "quota_exceeded",
+                    "code": exc.code,
                     "message": str(exc),
                     "used": exc.used,
                     "limit": exc.limit,
@@ -161,14 +142,49 @@ async def compare(request: Request, body: CompareRequest) -> Any:
                     "message": _MESSAGES["backend_unavailable"],
                 },
             )
+        ticket = ticket_from(quota, user_id=user_id, kind="compare")
+
+        # 扣费成功后才做 LLM 解析；解析失败立即 release，避免白扣。
+        try:
+            async with asyncio.timeout(settings.request_timeout_seconds):
+                await runner.resolve(prepared, user_id=user_id)
+        except TimeoutError:
+            await release_ticket(backend, ticket, reason="timeout")
+            await runner.close()
+            await cache.close()
+            return JSONResponse(
+                status_code=504, content={"code": "timeout", "message": _MESSAGES["timeout"]}
+            )
+        except CompareError as exc:
+            await release_ticket(backend, ticket, reason=exc.code)
+            await runner.close()
+            await cache.close()
+            return JSONResponse(
+                status_code=_STATUS.get(exc.code, 400),
+                content={"code": exc.code, "message": str(exc) or _MESSAGES.get(exc.code, "")},
+            )
+        except BackendError:
+            await release_ticket(backend, ticket, reason="backend_unavailable")
+            await runner.close()
+            await cache.close()
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "code": "backend_unavailable",
+                    "message": _MESSAGES["backend_unavailable"],
+                },
+            )
 
     async def event_source() -> AsyncIterator[str]:
         started = time.perf_counter()
         status = "ok"
         cancelled = False
+        cell_count = 0
         try:
             async with asyncio.timeout(settings.compare_timeout_seconds):
                 async for event in runner.run(prepared, user_id=user_id):
+                    if event.name == "cell":
+                        cell_count += 1
                     yield _sse(event.name, event.data)
         except TimeoutError:
             status = "timeout"
@@ -217,6 +233,28 @@ async def compare(request: Request, body: CompareRequest) -> Any:
                     tokens_out=runner.tokens_out,
                     cached=runner.cached,
                 )
+            if ticket is not None:
+                # 已有 cell / checkpoint 的断流保留 reserved，续跑同键不再扣；
+                # 一个 cell 都没产出才归还。
+                has_output = cell_count > 0 or prepared.checkpoint is not None
+                if cancelled:
+                    if not has_output:
+                        await settle_on_cancel(
+                            backend,
+                            ticket,
+                            commit=False,
+                            reason="cancelled",
+                        )
+                elif status == "ok":
+                    await commit_ticket(
+                        backend,
+                        ticket,
+                        tokens_in=runner.tokens_in,
+                        tokens_out=runner.tokens_out,
+                        request_id=request_id,
+                    )
+                elif not has_output:
+                    await release_ticket(backend, ticket, reason=status)
             await runner.close()
             await cache.close()
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -23,12 +25,19 @@ from app.services.persistence import (
     persist_conversation,
     persist_message,
 )
+from app.services.quota import (
+    commit_ticket,
+    release_ticket,
+    settle_on_cancel,
+    ticket_from,
+)
 from app.tools.repo_tools import TOOL_SCHEMAS, RepoToolExecutor
 
 logger = structlog.get_logger("chat")
 router = APIRouter()
 
 _CHAT_FAILED = "对话生成失败，请稍后重试"
+_CONVERSATION_MISSING = "会话不存在或无权访问"
 
 
 def build_backend(settings: Settings) -> BackendClient:
@@ -68,13 +77,38 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
         )
 
     backend = build_backend(settings)
+    user_text = _last_user_text(body)
+
+    # 扣费前先做会话归属校验：非法 conversationId 不能白扣一次额度
+    if body.conversation_id is not None:
+        try:
+            await backend.get_conversation(body.conversation_id, user_id=user_id)
+        except BackendError as exc:
+            if exc.status == 404:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": "conversation_not_found", "message": _CONVERSATION_MISSING},
+                )
+            logger.warning("chat_conversation_check_failed", error=str(exc))
+            return JSONResponse(
+                status_code=503,
+                content={"code": "backend_unavailable", "message": "服务暂时不可用，请稍后重试"},
+            )
+
+    client_key = body.turn_id or request_id or uuid.uuid4().hex
+    fingerprint = hashlib.sha256(user_text.encode("utf-8")).hexdigest()[:32]
     try:
-        quota = await backend.reserve_chat_quota(user_id)
+        quota = await backend.reserve_chat_quota(
+            user_id,
+            client_key=client_key,
+            fingerprint=fingerprint,
+            request_id=request_id,
+        )
     except QuotaExceededError as exc:
         return JSONResponse(
             status_code=429,
             content={
-                "code": "quota_exceeded",
+                "code": exc.code,
                 "message": str(exc),
                 "used": exc.used,
                 "limit": exc.limit,
@@ -88,6 +122,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
             content={"code": "backend_unavailable", "message": "服务暂时不可用，请稍后重试"},
         )
 
+    ticket = ticket_from(quota, user_id=user_id, kind="chat")
     history = _build_messages(body, settings.chat_history_limit)
     state = ChatState(messages=history, tool_budget=settings.chat_tool_round_limit)
 
@@ -108,7 +143,6 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
         retries=settings.llm_max_retries,
     )
 
-    user_text = _last_user_text(body)
     if body.persist_user:
         await persist_message(
             backend,
@@ -143,6 +177,14 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
             yield _sse("error", {"code": "timeout", "message": TIMEOUT_TEXT})
         except asyncio.CancelledError:
             logger.info("chat_cancelled", conversation_id=conversation_id)
+            await settle_on_cancel(
+                backend,
+                ticket,
+                commit=bool(runner.answer.strip()),
+                tokens_in=state.tokens_in,
+                tokens_out=state.tokens_out,
+                reason="cancelled",
+            )
             raise
         except Exception as exc:
             failed = True
@@ -159,6 +201,17 @@ async def chat_stream(request: Request, body: ChatRequest) -> Any:
             tokens_in=state.tokens_in,
             tokens_out=state.tokens_out,
         )
+        # 有产出（含部分回答）即 commit；完全没产出才归还，避免超时/失败白扣
+        if runner.answer.strip():
+            await commit_ticket(
+                backend,
+                ticket,
+                tokens_in=state.tokens_in,
+                tokens_out=state.tokens_out,
+                request_id=request_id,
+            )
+        else:
+            await release_ticket(backend, ticket, reason=status)
         if not failed:
             yield _sse(
                 "done",

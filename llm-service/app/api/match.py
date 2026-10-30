@@ -19,6 +19,12 @@ from app.graphs.match_graph import MatchError, MatchRunner
 from app.schemas.match import MatchRequest
 from app.services.embedding import get_embedding_service
 from app.services.metrics import report_request_metric
+from app.services.quota import (
+    commit_ticket,
+    release_ticket,
+    settle_on_cancel,
+    ticket_from,
+)
 
 logger = structlog.get_logger("match")
 router = APIRouter()
@@ -98,17 +104,23 @@ async def match(request: Request, body: MatchRequest) -> Any:
     )
 
     quota: dict[str, Any] = {}
+    fingerprint = runner.request_digest(body, user_id)
     # 扣费顺序：先看缓存命中直接回放，未命中才 reserve（命中缓存不扣配额）
     if await runner.peek_cache(body, user_id=user_id) is None:
         try:
-            quota = await backend.reserve_chat_quota(user_id)
+            quota = await backend.reserve_chat_quota(
+                user_id,
+                client_key=fingerprint,
+                fingerprint=fingerprint,
+                request_id=request_id,
+            )
         except QuotaExceededError as exc:
             await vector.close()
             await cache.close()
             return JSONResponse(
                 status_code=429,
                 content={
-                    "code": "quota_exceeded",
+                    "code": exc.code,
                     "message": str(exc),
                     "used": exc.used,
                     "limit": exc.limit,
@@ -127,13 +139,18 @@ async def match(request: Request, body: MatchRequest) -> Any:
                 },
             )
 
+    ticket = ticket_from(quota, user_id=user_id, kind="chat")
+
     async def event_source() -> AsyncIterator[str]:
         started = time.perf_counter()
         status = "ok"
         cancelled = False
+        produced = False
         try:
             async with asyncio.timeout(settings.request_timeout_seconds):
                 async for event in runner.run(body, user_id=user_id):
+                    if event.name == "candidate":
+                        produced = True
                     yield _sse(event.name, event.data)
         except TimeoutError:
             status = "timeout"
@@ -170,6 +187,26 @@ async def match(request: Request, body: MatchRequest) -> Any:
                 took_ms=took_ms,
                 quota=quota.get("chat"),
             )
+            if cancelled:
+                await settle_on_cancel(
+                    backend,
+                    ticket,
+                    commit=produced,
+                    tokens_in=runner.tokens_in,
+                    tokens_out=runner.tokens_out,
+                    reason="cancelled",
+                )
+            elif ticket is not None:
+                if produced or status == "ok":
+                    await commit_ticket(
+                        backend,
+                        ticket,
+                        tokens_in=runner.tokens_in,
+                        tokens_out=runner.tokens_out,
+                        request_id=request_id,
+                    )
+                else:
+                    await release_ticket(backend, ticket, reason=status)
             if not cancelled:
                 await report_request_metric(
                     backend,

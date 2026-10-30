@@ -751,6 +751,10 @@ class MatchRunner:
         limit = request.limit or self._settings.match_limit_default
         return await self._cache.get_json(self._cache_key(request, user_id, limit))
 
+    def request_digest(self, request: MatchRequest, user_id: int) -> str:
+        """稳定请求指纹：同时作为缓存键与扣费幂等键。"""
+        return self._digest(request, user_id, request.limit or self._settings.match_limit_default)
+
     async def run(self, request: MatchRequest, *, user_id: int) -> AsyncIterator[MatchEvent]:
         started = time.perf_counter()
         limit = request.limit or self._settings.match_limit_default
@@ -1052,6 +1056,10 @@ class MatchRunner:
         return _unique([term for term in terms if term])[:3]
 
     def _cache_key(self, request: MatchRequest, user_id: int, limit: int) -> str:
+        return f"match:{user_id}:{self._digest(request, user_id, limit)}"
+
+    @staticmethod
+    def _digest(request: MatchRequest, user_id: int, limit: int) -> str:
         fingerprint = json.dumps(
             {
                 "userId": user_id,
@@ -1063,5 +1071,4 @@ class MatchRunner:
             ensure_ascii=False,
             sort_keys=True,
         )
-        digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:32]
-        return f"match:{user_id}:{digest}"
+        return hashlib.sha256(fingerprint.encode()).hexdigest()[:32]

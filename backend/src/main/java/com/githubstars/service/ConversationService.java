@@ -105,6 +105,12 @@ public class ConversationService {
         return new PageResult<>(items, result.getTotal(), current, pageSize);
     }
 
+    /** 扣费前的廉价归属校验：不存在或不属于该用户直接抛出 404。 */
+    public boolean exists(Long userId, Long id) {
+        find(userId, id);
+        return true;
+    }
+
     public ConversationDetail get(Long userId, Long id) {
         Conversation conversation = find(userId, id);
         List<Message> messages = messageMapper.selectList(new LambdaQueryWrapper<Message>()

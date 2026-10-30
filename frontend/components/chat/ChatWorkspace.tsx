@@ -66,6 +66,14 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+/** 每一轮对话的唯一标识：重试时复用，服务端据此做幂等扣费。 */
+function newTurnId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function ChatWorkspace({
   user,
   conversations,
@@ -87,6 +95,7 @@ export default function ChatWorkspace({
 
   const messagesRef = useRef<UiMessage[]>(initialMessages);
   const abortRef = useRef<AbortController | null>(null);
+  const turnIdRef = useRef<string | null>(null);
   const conversationIdRef = useRef<number | null>(initialConversationId ?? null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -100,9 +109,11 @@ export default function ChatWorkspace({
   const runTurn = async (
     text: string,
     base: UiMessage[],
-    options: { persistUser?: boolean } = {},
+    options: { persistUser?: boolean; turnId?: string } = {},
   ) => {
     const assistantIndex = base.length + 1;
+    const turnId = options.turnId ?? newTurnId();
+    turnIdRef.current = turnId;
     setError(null);
     setSidebarOpen(false);
     updateMessages([...base, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
@@ -125,6 +136,7 @@ export default function ChatWorkspace({
         {
           conversationId: conversationIdRef.current,
           messages: payload,
+          turnId,
           persistUser: options.persistUser,
         },
         {
@@ -246,7 +258,11 @@ export default function ChatWorkspace({
     const persistUser = current
       .slice(end)
       .every((message) => !message.content && !message.repos?.length);
-    void runTurn(userMessage.content, current.slice(0, end - 1), { persistUser });
+    // 复用上一轮的 turnId：服务端账本按同键返回原预留，重试不会二次扣费
+    void runTurn(userMessage.content, current.slice(0, end - 1), {
+      persistUser,
+      turnId: turnIdRef.current ?? undefined,
+    });
   };
 
   const startNewChat = () => {

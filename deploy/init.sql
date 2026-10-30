@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS favorites (
     KEY idx_user (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 每日用量（配额以 Redis 原子扣减为准，这张表用于成本统计）
+-- 每日用量（配额权威计数：count < limit 才允许 +1，同时累计 token 成本）
 CREATE TABLE IF NOT EXISTS usage_daily (
     user_id       BIGINT NOT NULL,
     day           DATE NOT NULL,
@@ -183,6 +183,31 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     tokens_in     BIGINT DEFAULT 0,
     tokens_out    BIGINT DEFAULT 0,
     PRIMARY KEY (user_id, day)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 配额账本（M1+）：唯一幂等键 + 两阶段状态，保证每笔扣费可回溯、可补退
+CREATE TABLE IF NOT EXISTS quota_ledger (
+    idem_key     CHAR(64) NOT NULL COMMENT 'SHA256(userId|kind|clientKey|fingerprint)',
+    user_id      BIGINT NOT NULL,
+    kind         VARCHAR(16) NOT NULL COMMENT 'chat / compare',
+    client_key   VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'chat=turnId；match/compare=请求指纹',
+    fingerprint  VARCHAR(128) NOT NULL DEFAULT '' COMMENT '请求内容指纹',
+    day          DATE NOT NULL,
+    state        VARCHAR(16) NOT NULL COMMENT 'reserved / committed / released / refunded',
+    reason       VARCHAR(64) NULL COMMENT 'released/refunded 原因',
+    charged      TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已计入 usage_daily',
+    used_after   INT NULL COMMENT '该笔操作后的当日用量',
+    tokens_in    BIGINT DEFAULT 0,
+    tokens_out   BIGINT DEFAULT 0,
+    request_id   VARCHAR(64) NULL COMMENT '用于按 requestId 查询与告警关联',
+    created_at   DATETIME NOT NULL,
+    updated_at   DATETIME NOT NULL,
+    PRIMARY KEY (idem_key),
+    KEY idx_user_day (user_id, day, kind),
+    KEY idx_state_updated (state, updated_at),
+    KEY idx_request (request_id),
+    KEY idx_day (day),
+    KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- AI 请求指标（M7）：按请求记录 token、延迟与结果，用于成本看板与 P95
