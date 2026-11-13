@@ -12,6 +12,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+# 评测判定缓存（可按需重建）
+llm-service/tests/eval/.judge-cache.json
 
 # Java
 target/
@@ -56,5 +58,6 @@ build/
 
 # Local docs & tooling (not tracked in remote)
 doc/
+output/
 .trae/
 _profile_readme/

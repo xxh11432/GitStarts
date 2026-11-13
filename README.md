@@ -41,8 +41,8 @@ GitStarts 起初是一个 GitHub 热门仓库聚合站：定时采集仓库的 s
 flowchart LR
     A[输入想法] --> B[需求结构化]
     B --> C[硬过滤<br/>平台 / 语言 / 许可 / 活跃度]
-    C --> D[向量召回<br/>Qdrant top 40]
-    D --> E[关键词补充<br/>+ LLM 重排]
+    C --> D[分组召回<br/>Qdrant top 60 仓库]
+    D --> E[关键词补充<br/>+ 交叉编码 rerank]
     E --> F[候选清单 3-10<br/>含契合度分解]
     F --> G[选 2-4 个深读]
     G --> H[对比矩阵<br/>逐格证据]
@@ -57,16 +57,17 @@ flowchart LR
 契合度不再是一个不可解释的分数，而是显式分解：
 
 ```
-fit = 0.45 × 语义相关
-    + 0.25 × 硬条件覆盖（must 命中率）
+fit = 0.70 × 语义相关
+    + 0.15 × 硬条件覆盖（must 命中率）
     + 0.15 × 维护活跃度（pushed_at / star 增速 / 是否 archived）
-    + 0.15 × 许可证与生态适配
 ```
+
+排序以语义相关性为主键，fit 只在语义相同时作为次级排序；许可证只作为风险提示，不参与打分。
 
 ## 核心能力（规划）
 
 - **需求结构化**：只抽取用户明说的条件，不确定项降级为软偏好，禁止臆造许可证与部署方式。
-- **混合召回**：MySQL 硬过滤 → Qdrant 向量召回 → 关键词补充 → LLM 重排（只允许 ±0.1 调整并给出理由）。
+- **混合召回**：MySQL 硬过滤（严格，不放宽）→ Qdrant 分组召回 → 关键词补充 → 线性衰减融合 → 交叉编码 rerank（`bge-reranker-v2-m3`）重排。
 - **AI 深读**：按 Markdown 标题切分 README、清洗后入索引，回答基于 `[TOOL_DATA]` 与段落证据。
 - **逐格证据对比**：8 个固定维度（定位 / 技术栈 / 部署 / 能力覆盖 / 许可 / 活跃度 / 扩展性 / 风险），每个单元格标注证据或「信息不足」。
 - **成本与配额**：普通用户 30 次对话 + 3 次深度对比每天；对比结果按文档版本缓存 7 天。
@@ -85,12 +86,13 @@ fit = 0.45 × 语义相关
 - **M1 账号会话与配额**：GitHub OAuth 登录闭环、Spring Session Redis（7 天）、每日配额 MySQL 原子扣减 + 幂等账本、`/ai/**` 未登录 401（Nginx auth_request）、登录页与 `/me`、`/compare` 路由保护
 - **M2 仓库数据补强**：`platform` 规则推导与筛选、许可证与更新时间筛选、详情页 README 摘要与相关推荐、首页平台/统计模块、列表与详情新视觉及移动端筛选抽屉
 - **M3 AI 对话 MVP**：`/ai/chat/stream` SSE 流式（`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error`）、工具调用（`search_repos` / `get_repo` / `get_rank`）、首页对话与仓库卡、会话与消息异步落库
-- **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → fastembed embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 硬过滤 → 向量召回 + 关键词补充 → LLM 重排 ±0.1 → 四维契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 `recall@10` 报告脚本
+- **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 严格硬过滤 → 分组召回 + 关键词补充 → 线性衰减融合 → 交叉编码 rerank → 语义主排序 + 契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 LLM-as-Judge 相关性报告
 - **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
 - **M6 个性化沉淀**：收藏与备注（`favorites`，跨会话一致）；`/me` 完整化（配额、想法、对比、收藏、会话入口）；对比历史 / 想法 / 会话历史的列表与详情；技能 / 兴趣 / 偏好画像与规则推荐位；对比分享链接可撤销、记录可删除；账号删除时清理全部个人数据
 - **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 按 IP 限流 / 关闭图片优化器；Redis AOF 与容器健康检查；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
 - **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比缓存先于配额判断；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
 - **活跃度采集与排序**：`heat_score`（Star 体量 × 近期推送衰减）随采集更新、启动时回填；`/repos?sort=active`、排行榜「活跃综合榜」与筛选器均支持
+- **RAG 召回优化（2026-11-13）**：分组召回（`group_by=repo_id`，60 仓库）、`search_query` 多短查询、通道内线性衰减融合（`decay=0.02`）、`bge-reranker-v2-m3` 全池重排、语义主排序、fit 权重 `0.70/0.15/0.15`；移除过滤放宽、热度兜底与 LLM 重排；评测改为 LLM-as-Judge 主口径（21 条用例 / 43 个在库标注仓库）
 
 **已上线**
 
@@ -104,7 +106,7 @@ fit = 0.45 × 语义相关
 | M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 已完成 |
 | M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 已完成 |
 | M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 已完成 |
-| M8 | 提升检索精度 | 进行中... |
+| M8 | 检索精度提升：分组召回、线性衰减融合、交叉编码 rerank、语义主排序、LLM-as-Judge 评测 | 进行中（P0 已实现，待 21 条新基线复测） |
 
 ## 架构
 
@@ -287,7 +289,14 @@ uv run python -m worker
 | `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址与集合名（默认 `repo_chunks`；更换 embedding 模型时使用新集合名，如 `repo_chunks_bge_m3`） |
 | `INDEX_ON_STARTUP` / `INDEX_INTERVAL_MINUTES` | worker 首次是否全量、之后增量扫描间隔（分钟） |
 | `INDEX_FULL_REBUILD` / `INDEX_MAX_REPOS` | 强制重扫全部仓库 / 小样本仓库数上限（0 为不限） |
-| `MATCH_RECALL_LIMIT` / `MATCH_RERANK_LIMIT` | 向量召回条数 / LLM 重排候选数（默认 40 / 8） |
+| `MATCH_RECALL_LIMIT` | 仓库级召回数（分组召回后 limit 表示仓库数，默认 60） |
+| `RERANK_ENABLED` / `RERANK_MODEL` | 是否启用交叉编码 rerank / 模型名（默认 true / `BAAI/bge-reranker-v2-m3`） |
+| `RERANK_BASE_URL` / `RERANK_API_KEY` | rerank 接口地址与 Key；留空时复用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` |
+| `RERANK_BATCH_SIZE` / `RERANK_WEIGHT` | rerank 每批文档数 / 与 RRF 的融合权重（默认 32 / 0.6） |
+| `RERANK_TIMEOUT_SECONDS` | rerank 接口超时秒数（默认 20） |
+| `MATCH_KEYWORD_LIMIT` | 每个关键词在站内检索的候选数（默认 12） |
+| `MATCH_GROUP_RECALL_ENABLED` / `MATCH_GROUP_SIZE` | 是否用 Qdrant `group_by=repo_id` 做仓库级召回 / 每仓库保留证据条数（默认 true / 2） |
+| `MATCH_CACHE_VERSION` | 匹配缓存 key 版本，改召回策略后递增以失效旧缓存（默认 v2） |
 | `MATCH_CACHE_TTL_SECONDS` | 匹配结果缓存秒数（默认 600） |
 | `COMPARE_EVIDENCE_TOPK` | 对比每个维度召回的 README / manifest 证据条数（默认 6） |
 | `COMPARE_CACHE_TTL_SECONDS` | 对比结果缓存秒数（默认 7 天，命中不计费） |

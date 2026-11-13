@@ -30,9 +30,7 @@ export default function SampleDossier() {
         </div>
       </div>
 
-      <FitMeter
-        breakdown={{ semantic: 0.92, coverage: 0.83, maintenance: 0.88, license: 0.8 }}
-      />
+      <FitMeter breakdown={{ semantic: 0.92, coverage: 0.83, maintenance: 0.88 }} />
 
       <div className="flex flex-wrap gap-1.5">
         <Condition status="hit" label="Docker" />

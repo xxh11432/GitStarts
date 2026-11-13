@@ -25,6 +25,8 @@ class Requirement(CamelModel):
     goal: str = Field(default="", max_length=500)
     domain: str | None = Field(default=None, max_length=100)
     audience: str | None = Field(default=None, max_length=100)
+    # 一句检索式：只保留产品名、技术名与英文关键词，避免把整段原文塞进 query。
+    search_query: str = Field(default="", max_length=80)
     must: list[Condition] = Field(default_factory=list, max_length=10)
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)
@@ -39,21 +41,11 @@ class LlmRequirement(CamelModel):
     goal: str = Field(default="", max_length=500)
     domain: str | None = Field(default=None, max_length=100)
     audience: str | None = Field(default=None, max_length=100)
+    search_query: str = Field(default="", max_length=80)
     must: list[Condition] = Field(default_factory=list, max_length=10)
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)
     keywords: list[str] = Field(default_factory=list, max_length=6)
-
-
-class RerankItem(CamelModel):
-    full_name: str
-    delta: float = Field(default=0.0, ge=-0.1, le=0.1)
-    reasons: list[str] = Field(default_factory=list, max_length=3)
-    risks: list[str] = Field(default_factory=list, max_length=3)
-
-
-class RerankResult(CamelModel):
-    items: list[RerankItem] = Field(default_factory=list, max_length=30)
 
 
 class MatchRequest(CamelModel):
@@ -73,7 +65,6 @@ class FitBreakdown(CamelModel):
     semantic: float
     coverage: float
     maintenance: float
-    license: float
 
 
 class Evidence(CamelModel):
@@ -90,7 +81,6 @@ class Candidate(CamelModel):
     risks: list[str] = Field(default_factory=list)
     conditions: list[ConditionCheck] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
-    fitted: bool = False
 
 
 class CandidateList(CamelModel):

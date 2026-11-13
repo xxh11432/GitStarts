@@ -82,9 +82,6 @@ export default function CandidateCard({
               选择
             </label>
           ) : null}
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-            {candidate.fitted ? 'Reranked' : 'Retrieved'}
-          </span>
         </div>
       </div>
 

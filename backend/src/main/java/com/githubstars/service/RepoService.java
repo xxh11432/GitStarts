@@ -165,10 +165,13 @@ public class RepoService {
         wrapper.eq(Repository::getArchived, 0).eq(Repository::getDisabled, 0);
 
         if (q != null && !q.isBlank()) {
-            String like = q.trim();
+            String raw = q.trim();
+            // topics 是 JSON 列，只作为召回补充：截断到 24 字，避免长句 LIKE 全表扫描
+            String like = raw.length() > 24 ? raw.substring(0, 24) : raw;
             wrapper.and(w -> w.like(Repository::getFullName, like)
                     .or().like(Repository::getName, like)
-                    .or().like(Repository::getDescription, like));
+                    .or().like(Repository::getDescription, like)
+                    .or().like(Repository::getTopics, like));
         }
         if (language != null && !language.isBlank()) {
             wrapper.eq(Repository::getLanguage, resolveLanguage(language));

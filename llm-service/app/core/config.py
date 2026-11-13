@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     llm_embedding_dim: int = 1024
     fastembed_cache: str = "/models"
 
+    # Rerank：默认复用 embedding 的供应商与 Key（硅基流动 bge-reranker-v2-m3）
+    rerank_enabled: bool = True
+    rerank_base_url: str = ""  # 空则回落到 EMBEDDING_BASE_URL
+    rerank_api_key: str = ""  # 空则回落到 EMBEDDING_API_KEY
+    rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    rerank_batch_size: int = 32
+    # 融合权重：0.6 × rerank + 0.4 × RRF；设为 0 等价于关闭融合
+    rerank_weight: float = 0.6
+    rerank_timeout_seconds: float = 20.0
+
     # Infrastructure
     backend_url: str = "http://localhost:8080"
     backend_timeout_seconds: float = 5.0
@@ -96,10 +106,16 @@ class Settings(BaseSettings):
 
     # Match (M4)
     match_limit_default: int = 6
-    match_recall_limit: int = 40
-    match_keyword_limit: int = 10
-    match_rerank_limit: int = 8
+    match_recall_limit: int = 60
+    match_keyword_limit: int = 12
     match_cache_ttl_seconds: int = 600
+    # 分组召回：limit 表示仓库数；关闭后回退到 chunk 召回 + 应用层聚合
+    match_group_recall_enabled: bool = True
+    match_group_size: int = 2
+    # RRF 通道内线性衰减：score = max(0, 1 - decay × (rank - 1))
+    match_rrf_decay: float = 0.02
+    match_query_max: int = 3
+    match_cache_version: str = "v2"
 
     # Compare (M5)
     compare_schema_version: str = "v1"

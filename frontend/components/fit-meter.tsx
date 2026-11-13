@@ -1,17 +1,15 @@
 import { cn } from '@/lib/utils';
 
 const ROWS = [
-  { key: 'semantic' as const, label: '语义', weight: '45%', color: 'bg-primary' },
-  { key: 'coverage' as const, label: '条件', weight: '25%', color: 'bg-info' },
+  { key: 'semantic' as const, label: '语义', weight: '70%', color: 'bg-primary' },
+  { key: 'coverage' as const, label: '条件', weight: '15%', color: 'bg-info' },
   { key: 'maintenance' as const, label: '维护', weight: '15%', color: 'bg-foreground/60' },
-  { key: 'license' as const, label: '许可', weight: '15%', color: 'bg-muted-foreground' },
 ];
 
 export interface FitBreakdownView {
   semantic: number;
   coverage: number;
   maintenance: number;
-  license: number;
 }
 
 export default function FitMeter({ breakdown }: { breakdown: FitBreakdownView }) {

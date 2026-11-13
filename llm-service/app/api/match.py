@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.clients.backend import BackendClient, BackendError, QuotaExceededError
 from app.clients.llm import LlmNotConfiguredError, build_chat_model
 from app.clients.redis import CacheClient
+from app.clients.rerank import RerankClient
 from app.clients.vector import VectorStore
 from app.core.config import Settings, get_settings
 from app.graphs.match_graph import MatchError, MatchRunner
@@ -101,6 +102,7 @@ async def match(request: Request, body: MatchRequest) -> Any:
         embedding=get_embedding_service(settings),
         llm=llm,
         cache=cache,
+        reranker=RerankClient(settings),
     )
 
     quota: dict[str, Any] = {}

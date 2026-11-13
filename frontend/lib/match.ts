@@ -15,6 +15,8 @@ export interface Requirement {
   goal: string;
   domain?: string | null;
   audience?: string | null;
+  /** 一句检索式：保留产品名/技术名/英文关键词，最长 80 字 */
+  searchQuery?: string;
   must: MatchCondition[];
   should: MatchCondition[];
   exclude: string[];
@@ -36,7 +38,6 @@ export interface FitBreakdownView {
   semantic: number;
   coverage: number;
   maintenance: number;
-  license: number;
 }
 
 export interface MatchEvidence {
@@ -53,7 +54,6 @@ export interface MatchCandidate {
   risks: string[];
   conditions: ConditionCheck[];
   evidence: MatchEvidence[];
-  fitted: boolean;
 }
 
 export interface MatchDone {

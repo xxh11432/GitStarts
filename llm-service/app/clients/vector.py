@@ -53,6 +53,16 @@ class VectorHit:
     chunk_type: str = "readme"
 
 
+@dataclass(frozen=True)
+class VectorGroup:
+    """按仓库分组的召回结果：limit 表示仓库数，hits 保留该仓库的最佳证据。"""
+
+    repo_id: int
+    full_name: str
+    best_score: float
+    hits: list[VectorHit]
+
+
 def build_filter(
     *,
     languages: list[str] | None = None,
@@ -99,6 +109,19 @@ def _case_variants(values: list[str]) -> list[str]:
             if variant and variant not in expanded:
                 expanded.append(variant)
     return expanded
+
+
+def _to_hit(point: Any) -> VectorHit:
+    payload = getattr(point, "payload", None) or {}
+    return VectorHit(
+        repo_id=int(payload.get("repo_id") or 0),
+        full_name=str(payload.get("full_name") or ""),
+        score=float(point.score),
+        section=str(payload.get("section") or ""),
+        content=str(payload.get("content") or ""),
+        source_url=str(payload.get("source_url") or ""),
+        chunk_type=str(payload.get("chunk_type") or "readme"),
+    )
 
 
 class VectorStore:
@@ -162,6 +185,16 @@ class VectorStore:
                 logger.debug("payload_index_skipped", field=field, error=type(exc).__name__)
         return created
 
+    def _search_params(self) -> models.SearchParams | None:
+        if not self._settings.qdrant_quantization_enabled:
+            return None
+        return models.SearchParams(
+            quantization=models.QuantizationSearchParams(
+                rescore=self._settings.qdrant_quantization_rescore,
+                oversampling=self._settings.qdrant_quantization_oversampling,
+            )
+        )
+
     async def search(
         self,
         vector: list[float],
@@ -172,37 +205,64 @@ class VectorStore:
         client = self._connect()
         if not await client.collection_exists(self.collection):
             return []
-        search_params = None
-        if self._settings.qdrant_quantization_enabled:
-            search_params = models.SearchParams(
-                quantization=models.QuantizationSearchParams(
-                    rescore=self._settings.qdrant_quantization_rescore,
-                    oversampling=self._settings.qdrant_quantization_oversampling,
-                )
-            )
         response = await client.query_points(
             collection_name=self.collection,
             query=vector,
             limit=max(1, limit),
             query_filter=query_filter,
-            search_params=search_params,
+            search_params=self._search_params(),
             with_payload=True,
         )
-        hits: list[VectorHit] = []
-        for point in response.points:
-            payload = point.payload or {}
-            hits.append(
-                VectorHit(
-                    repo_id=int(payload.get("repo_id") or 0),
-                    full_name=str(payload.get("full_name") or ""),
-                    score=float(point.score),
-                    section=str(payload.get("section") or ""),
-                    content=str(payload.get("content") or ""),
-                    source_url=str(payload.get("source_url") or ""),
-                    chunk_type=str(payload.get("chunk_type") or "readme"),
+        return [_to_hit(point) for point in response.points]
+
+    async def search_groups(
+        self,
+        vector: list[float],
+        *,
+        limit: int,
+        group_size: int = 2,
+        query_filter: models.Filter | None = None,
+    ) -> list[VectorGroup]:
+        """仓库级召回：group_by=repo_id，limit 表示最多返回多少个仓库。
+
+        repo_id 已有 payload 索引，因此不需要重建集合；分组失败由调用方降级到 search()。
+        """
+        client = self._connect()
+        if not await client.collection_exists(self.collection):
+            return []
+        response = await client.query_points_groups(
+            collection_name=self.collection,
+            query=vector,
+            group_by="repo_id",
+            group_size=max(1, group_size),
+            limit=max(1, limit),
+            query_filter=query_filter,
+            search_params=self._search_params(),
+            with_payload=[
+                "repo_id",
+                "full_name",
+                "section",
+                "content",
+                "source_url",
+                "chunk_type",
+            ],
+        )
+        groups: list[VectorGroup] = []
+        for group in response.groups:
+            hits = [_to_hit(point) for point in group.hits]
+            hits = [hit for hit in hits if hit.full_name and hit.repo_id]
+            if not hits:
+                continue
+            groups.append(
+                VectorGroup(
+                    repo_id=hits[0].repo_id,
+                    full_name=hits[0].full_name,
+                    best_score=max(hit.score for hit in hits),
+                    hits=hits,
                 )
             )
-        return hits
+        groups.sort(key=lambda item: item.best_score, reverse=True)
+        return groups
 
     async def upsert_chunks(self, points: list[ChunkPoint]) -> int:
         if not points:

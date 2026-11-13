@@ -2,24 +2,27 @@ from typing import Any
 
 import pytest
 
-from app.clients.vector import VectorHit, build_filter
+from app.clients.rerank import RerankError
+from app.clients.vector import VectorGroup, VectorHit, build_filter
 from app.core.config import Settings
 from app.graphs.match_graph import (
     MatchError,
     MatchRunner,
+    build_rerank_document,
+    build_rerank_query,
+    build_search_queries,
     collect_hard_filters,
     evaluate_condition,
     fit_candidate,
     normalize_requirement,
     parse_requirement,
+    rrf_scores,
 )
 from app.schemas.match import (
     Condition,
     LlmRequirement,
     MatchRequest,
     Requirement,
-    RerankItem,
-    RerankResult,
 )
 
 USER_ID = 7
@@ -30,10 +33,8 @@ class FakeLlm:
         self,
         *,
         requirement: LlmRequirement | None = None,
-        rerank: RerankResult | None = None,
     ) -> None:
         self._requirement = requirement
-        self._rerank = rerank
         self.calls = 0
 
     def with_structured_output(self, schema: type, method: str | None = None) -> Any:
@@ -42,9 +43,7 @@ class FakeLlm:
         class Runnable:
             async def ainvoke(self, messages: list[Any], config: Any = None) -> Any:
                 outer.calls += 1
-                if schema is LlmRequirement:
-                    return outer._requirement or LlmRequirement(goal="兜底目标")
-                return outer._rerank or RerankResult(items=[])
+                return outer._requirement or LlmRequirement(goal="兜底目标")
 
         return Runnable()
 
@@ -129,6 +128,34 @@ class FakeEmbedding:
     async def embed_query(self, text: str) -> list[float]:
         return [0.1, 0.2, 0.3]
 
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
+class FakeGroupVector:
+    def __init__(self, groups: list[VectorGroup]) -> None:
+        self._groups = groups
+        self.calls: list[tuple[int, int, Any]] = []
+
+    async def search_groups(
+        self,
+        vector: list[float],
+        *,
+        limit: int,
+        group_size: int = 2,
+        query_filter: Any = None,
+    ) -> list[VectorGroup]:
+        self.calls.append((limit, group_size, query_filter))
+        return self._groups
+
+    async def search(
+        self, vector: list[float], *, limit: int, query_filter: Any = None
+    ) -> list[VectorHit]:
+        raise AssertionError("分组召回成功时不应回退到 chunk 召回")
+
+    async def close(self) -> None:
+        return None
+
 
 class FakeCache:
     def __init__(self) -> None:
@@ -175,7 +202,13 @@ def _hits() -> list[VectorHit]:
     ]
 
 
-def _runner(settings: Settings, backend: FakeBackend, vector: FakeVector, llm: Any) -> MatchRunner:
+def _runner(
+    settings: Settings,
+    backend: FakeBackend,
+    vector: FakeVector,
+    llm: Any,
+    reranker: Any = None,
+) -> MatchRunner:
     return MatchRunner(
         settings=settings,
         backend=backend,  # type: ignore[arg-type]
@@ -183,6 +216,7 @@ def _runner(settings: Settings, backend: FakeBackend, vector: FakeVector, llm: A
         embedding=FakeEmbedding(),  # type: ignore[arg-type]
         llm=llm,
         cache=FakeCache(),  # type: ignore[arg-type]
+        reranker=reranker,
     )
 
 
@@ -226,7 +260,8 @@ async def test_match_with_structured_conditions(settings: Settings) -> None:
     candidate = candidates[0]
     assert candidate["repo"]["fullName"] == "langgenius/dify"
     assert candidate["fit"] > 0
-    assert candidate["breakdown"]["semantic"] == 0.86
+    # semantic 现在是多路 RRF 归一化值（两路都排第一 → 1.0），不再是原始 cosine
+    assert candidate["breakdown"]["semantic"] == pytest.approx(1.0)
     assert candidate["breakdown"]["coverage"] == 1.0
     assert any(check["status"] == "hit" for check in candidate["conditions"])
     assert candidate["evidence"][0]["section"] == "Features"
@@ -296,7 +331,7 @@ def test_hard_filters_and_condition_states() -> None:
         ]
     )
     filters = collect_hard_filters(requirement)
-    assert filters.platforms == ["windows", "macos"]
+    assert filters.platforms == ["windows", "mac"]
     assert filters.licenses == ["mit"]
     assert filters.min_stars == 100
     assert filters.active_within_days == 365
@@ -310,6 +345,16 @@ def test_hard_filters_and_condition_states() -> None:
     assert evaluate_condition(requirement.must[0], unknown, "").status == "miss"
     assert evaluate_condition(requirement.must[1], unknown, "").status == "unknown"
     assert evaluate_condition(requirement.must[3], unknown, "").status == "unknown"
+
+
+def test_non_platform_values_do_not_become_hard_filters() -> None:
+    # 模型常把 kubernetes / mysql 填成 platform：不能当硬过滤，否则候选池会被清零
+    requirement = Requirement(
+        must=[Condition(key="platform", value=["kubernetes", "MySQL"])],
+    )
+    filters = collect_hard_filters(requirement)
+    assert filters.platforms == []
+    assert evaluate_condition(requirement.must[0], {"platform": "other"}, "").status == "unknown"
 
 
 def test_language_and_license_are_normalized_for_filters_and_checks() -> None:
@@ -354,7 +399,6 @@ def test_fit_candidate_breakdown_and_risks() -> None:
         semantic=0.4,
         requirement=requirement,
         evidence_hits=[],
-        rerank=None,
     )
     assert candidate.breakdown.coverage == 0.5
     assert candidate.breakdown.maintenance == 0.0
@@ -414,28 +458,8 @@ async def test_match_reports_backend_unavailable_when_recall_breaks(
     assert excinfo.value.code == "backend_unavailable"
 
 
-async def test_match_falls_back_to_popular_repos_when_vector_empty(
-    settings: Settings,
-) -> None:
-    class FallbackBackend(FakeBackend):
-        async def search_repos(self, **kwargs: Any) -> list[dict[str, Any]]:
-            if kwargs.get("q"):
-                return []
-            return [
-                {
-                    "fullName": "foo/popular",
-                    "description": "站内热门项目",
-                    "language": "Python",
-                    "license": "mit",
-                    "category": "人工智能",
-                    "platform": "linux",
-                    "stars": 9000,
-                    "pushedAt": "2025-09-01T00:00:00",
-                    "topics": [],
-                }
-            ]
-
-    runner = _runner(settings, FallbackBackend(), FakeVector([]), FakeLlm())
+async def test_match_returns_empty_when_recall_is_empty(settings: Settings) -> None:
+    runner = _runner(settings, FakeBackend(), FakeVector([]), FakeLlm())
     events = await _collect(
         runner,
         MatchRequest(
@@ -444,38 +468,15 @@ async def test_match_falls_back_to_popular_repos_when_vector_empty(
         ),
     )
     candidates = [event.data for event in events if event.name == "candidate"]
-    assert len(candidates) == 1
-    assert candidates[0]["repo"]["fullName"] == "foo/popular"
-    # 兜底候选没有向量分数，契合度应明显低于语义召回。
-    assert candidates[0]["fit"] < 0.5
+    # 不再用站内热门兜底：召回为空就返回空结果
+    assert candidates == []
+    assert events[-1].data["total"] == 0
 
 
-async def test_rerank_adjusts_fit(settings: Settings) -> None:
+async def test_match_ranks_by_fit_without_llm_rerank(settings: Settings) -> None:
     backend = FakeBackend()
-    rerank = RerankResult(
-        items=[
-            RerankItem(
-                full_name="langgenius/dify",
-                delta=0.1,
-                reasons=["功能覆盖完整"],
-                risks=["无法确认中文全文检索"],
-            )
-        ]
-    )
-    vector = FakeVector(
-        _hits()
-        + [
-            VectorHit(
-                repo_id=3,
-                full_name="foo/legacy",
-                score=0.8,
-                section="README",
-                content="旧项目",
-                source_url="",
-            )
-        ]
-    )
-    runner = _runner(settings, backend, vector, FakeLlm(rerank=rerank))
+    vector = FakeVector(_hits())
+    runner = _runner(settings, backend, vector, FakeLlm())
     events = await _collect(
         runner,
         MatchRequest(
@@ -483,19 +484,96 @@ async def test_rerank_adjusts_fit(settings: Settings) -> None:
             structured=Requirement(goal="AI 平台", must=[Condition(key="license", value="MIT")]),
         ),
     )
+    # 结构体里不再有 LLM 重排字段：排序完全由召回 + 契合度决定
+    parsed = next(event for event in events if event.name == "parsed").data
+    assert "fitted" not in parsed["requirement"]
+
     candidates = [event.data for event in events if event.name == "candidate"]
-    assert len(candidates) == 2  # rerank 需要至少 3 个候选，这里保持未重排
-    assert all(candidate["fitted"] is False for candidate in candidates)
+    assert candidates
+    assert all("fitted" not in candidate for candidate in candidates)
+    assert "rerank_scored" in runner.recall_stats
 
 
-async def test_rerank_runs_with_three_candidates(settings: Settings) -> None:
+def test_build_search_queries_is_short_and_deduped() -> None:
+    requirement = Requirement(
+        goal="私有部署知识库",
+        search_query="self-hosted knowledge base RAG",
+        keywords=["ragflow", "dify"],
+        must=[Condition(key="license", value="MIT")],
+    )
+    queries = build_search_queries(requirement, "很长的用户原文" * 100, max_queries=3)
+    assert len(queries) == 3
+    assert queries[0] == "私有部署知识库"
+    assert queries[1] == "self-hosted knowledge base RAG ragflow dify"
+    assert "license MIT" in queries[2]
+    assert all(len(query) <= 200 for query in queries)
+
+    # 只有 goal 时不重复出同一条 query
+    single = build_search_queries(Requirement(goal="知识库"), None, max_queries=3)
+    assert single == ["知识库"]
+
+
+def test_build_search_queries_falls_back_when_degraded() -> None:
+    requirement = Requirement(goal="只用原文检索", degraded=True)
+    queries = build_search_queries(requirement, "需要支持私有部署的笔记工具", max_queries=3)
+    assert queries == ["只用原文检索 需要支持私有部署的笔记工具"]
+
+
+def test_rrf_scores_use_linear_decay() -> None:
+    scores = rrf_scores([["a/b", "c/d"], ["c/d", "e/f"]], decay=0.02)
+    # c/d 两路都命中（名次 2 和 1），高于只命中一路的 a/b
+    assert scores["c/d"] > scores["a/b"]
+    assert scores["c/d"] > scores["e/f"]
+    assert all(0.0 <= value <= 1.0 for value in scores.values())
+
+    # 单通道内名次差异必须明显：rank1=1.0，rank10=0.82
+    single = rrf_scores([["a/b"] + [f"r{i}/x" for i in range(2, 11)]], decay=0.02)
+    assert single["a/b"] == pytest.approx(1.0)
+    assert single["r10/x"] == pytest.approx(0.82)
+    assert single["a/b"] - single["r10/x"] == pytest.approx(0.18)
+
+
+async def test_group_recall_returns_repo_level_pool(settings: Settings) -> None:
+    groups = [
+        VectorGroup(
+            repo_id=1,
+            full_name="langgenius/dify",
+            best_score=0.81,
+            hits=[
+                VectorHit(
+                    repo_id=1,
+                    full_name="langgenius/dify",
+                    score=0.81,
+                    section="Features",
+                    content="LLM 应用编排与 Agent 工作流。",
+                    source_url="",
+                )
+            ],
+        ),
+        VectorGroup(
+            repo_id=3,
+            full_name="foo/next",
+            best_score=0.72,
+            hits=[
+                VectorHit(
+                    repo_id=3,
+                    full_name="foo/next",
+                    score=0.72,
+                    section="README",
+                    content="知识库，支持 Docker。",
+                    source_url="",
+                )
+            ],
+        ),
+    ]
+    vector = FakeGroupVector(groups)
     backend = FakeBackend(
         [
             *FakeBackend().repos,
             {
                 "fullName": "foo/next",
                 "description": "新一代知识库",
-                "language": "Python",
+                "language": "TypeScript",
                 "license": "MIT",
                 "category": "AI",
                 "platform": "linux",
@@ -505,36 +583,175 @@ async def test_rerank_runs_with_three_candidates(settings: Settings) -> None:
             },
         ]
     )
-    rerank = RerankResult(
-        items=[
-            RerankItem(
-                full_name="langgenius/dify",
-                delta=0.1,
-                reasons=["功能覆盖完整"],
-                risks=[],
-            )
-        ]
-    )
-    vector = FakeVector(
-        _hits()
-        + [
-            VectorHit(
-                repo_id=3,
-                full_name="foo/next",
-                score=0.7,
-                section="README",
-                content="新一代知识库，支持 Docker 部署。",
-                source_url="",
-            )
-        ]
-    )
-    runner = _runner(settings, backend, vector, FakeLlm(rerank=rerank))
+    runner = _runner(settings, backend, vector, FakeLlm())  # type: ignore[arg-type]
     events = await _collect(
         runner,
         MatchRequest(raw_text="AI 平台", structured=Requirement(goal="AI 平台")),
     )
+
+    assert vector.calls, "应调用分组召回"
+    limit, group_size, _ = vector.calls[0]
+    assert limit == settings.match_recall_limit
+    assert group_size == settings.match_group_size
+    # limit 语义是仓库数：只返回 2 个仓库，不会因为一个仓库多块而膨胀
+    assert runner.recall_stats["vector_repos"] == 2
+    assert runner.recall_stats["vector_groups"] == 2
+
     candidates = [event.data for event in events if event.name == "candidate"]
-    assert len(candidates) == 3
-    fitted = {item["repo"]["fullName"]: item["fitted"] for item in candidates}
-    assert fitted["langgenius/dify"] is True
-    assert fitted["foo/next"] is False
+    assert {item["repo"]["fullName"] for item in candidates} == {
+        "langgenius/dify",
+        "foo/next",
+    }
+
+
+def test_cache_key_carries_pipeline_version(settings: Settings) -> None:
+    runner = _runner(settings, FakeBackend(), FakeVector([]), FakeLlm())
+    request = MatchRequest(raw_text="x", structured=Requirement(goal="x"))
+    key = runner._cache_key(request, USER_ID, 6)
+    assert key.startswith(f"match:{settings.match_cache_version}:{USER_ID}:")
+
+    newer = Settings(match_cache_version="v3")
+    other = _runner(newer, FakeBackend(), FakeVector([]), FakeLlm())
+    assert other._cache_key(request, USER_ID, 6) != key
+
+
+def test_rerank_query_and_document_builders() -> None:
+    requirement = Requirement(goal="知识库", search_query="self-hosted RAG")
+    assert build_rerank_query(requirement, "原文") == "self-hosted RAG"
+    assert build_rerank_query(Requirement(goal="知识库"), "原文") == "知识库"
+
+    document = build_rerank_document(
+        {"description": "开源知识库", "topics": ["rag", "search"]},
+        [
+            VectorHit(
+                repo_id=1,
+                full_name="a/b",
+                score=0.9,
+                section="Features",
+                content="支持中文全文检索与 Docker 部署。",
+                source_url="",
+            )
+        ],
+    )
+    assert "开源知识库" in document
+    assert "rag" in document
+    assert "Docker 部署" in document
+
+
+class FakeReranker:
+    enabled = True
+
+    def __init__(self, scores: list[float]) -> None:
+        self._scores = scores
+        self.queries: list[str] = []
+        self.documents: list[str] = []
+
+    async def score(self, query: str, documents: list[str]) -> list[float]:
+        self.queries.append(query)
+        self.documents = documents
+        return self._scores
+
+
+class BrokenReranker:
+    enabled = True
+
+    async def score(self, query: str, documents: list[str]) -> list[float]:
+        raise RerankError("boom")
+
+
+def _rerank_fixture() -> tuple[FakeBackend, FakeGroupVector, list[VectorGroup]]:
+    groups = [
+        VectorGroup(
+            repo_id=1,
+            full_name="langgenius/dify",
+            best_score=0.81,
+            hits=[
+                VectorHit(
+                    repo_id=1,
+                    full_name="langgenius/dify",
+                    score=0.81,
+                    section="Features",
+                    content="LLM 应用编排与 Agent 工作流。",
+                    source_url="",
+                )
+            ],
+        ),
+        VectorGroup(
+            repo_id=3,
+            full_name="foo/next",
+            best_score=0.72,
+            hits=[
+                VectorHit(
+                    repo_id=3,
+                    full_name="foo/next",
+                    score=0.72,
+                    section="README",
+                    content="知识库，支持 Docker。",
+                    source_url="",
+                )
+            ],
+        ),
+    ]
+    backend = FakeBackend(
+        [
+            *FakeBackend().repos,
+            {
+                "fullName": "foo/next",
+                "description": "新一代知识库",
+                "language": "TypeScript",
+                "license": "MIT",
+                "category": "AI",
+                "platform": "linux",
+                "stars": 800,
+                "pushedAt": "2025-08-01T00:00:00",
+                "topics": [],
+            },
+        ]
+    )
+    return backend, FakeGroupVector(groups), groups
+
+
+async def test_rerank_fuses_with_rrf_scores(settings: Settings) -> None:
+    backend, vector, _ = _rerank_fixture()
+    reranker = FakeReranker([0.1, 0.9])
+    runner = _runner(settings, backend, vector, FakeLlm(), reranker=reranker)  # type: ignore[arg-type]
+    events = await _collect(
+        runner,
+        MatchRequest(raw_text="AI 平台", structured=Requirement(goal="AI 平台")),
+    )
+
+    assert reranker.queries == ["AI 平台"]
+    assert runner.recall_stats["rerank_scored"] == 2
+    assert runner.recall_stats["rerank_failed"] is False
+
+    candidates = {
+        event.data["repo"]["fullName"]: event.data
+        for event in events
+        if event.name == "candidate"
+    }
+    # rerank 把 foo/next 排到第一，融合后 semantic 应反超 RRF 排名第一的 dify
+    assert (
+        candidates["foo/next"]["breakdown"]["semantic"]
+        > candidates["langgenius/dify"]["breakdown"]["semantic"]
+    )
+
+
+async def test_rerank_failure_keeps_rrf_scores(settings: Settings) -> None:
+    backend, vector, _ = _rerank_fixture()
+    runner = _runner(settings, backend, vector, FakeLlm(), reranker=BrokenReranker())  # type: ignore[arg-type]
+    events = await _collect(
+        runner,
+        MatchRequest(raw_text="AI 平台", structured=Requirement(goal="AI 平台")),
+    )
+
+    assert runner.recall_stats["rerank_failed"] is True
+    assert runner.recall_stats["rerank_scored"] == 0
+
+    candidates = {
+        event.data["repo"]["fullName"]: event.data
+        for event in events
+        if event.name == "candidate"
+    }
+    # 接口失败时保留原 RRF 分数：三路都排第一的 dify 仍为 1.0
+    assert candidates["langgenius/dify"]["breakdown"]["semantic"] == pytest.approx(1.0)
+
