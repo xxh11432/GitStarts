@@ -29,10 +29,11 @@ PROGRESS_EVERY = 100
 
 
 class _RateLimiter:
-    """按秒均匀放行，避免并发请求瞬间打满供应商配额（与本地对话共享同一账号）。"""
+    """按秒均匀放行；遇到 429 自动减半并冷却，连续成功后再缓慢回暖。"""
 
     def __init__(self, rps: float) -> None:
-        self._interval = 1.0 / rps if rps and rps > 0 else 0.0
+        self._base = 1.0 / rps if rps and rps > 0 else 0.0
+        self._interval = self._base
         self._lock = asyncio.Lock()
         self._next_at = 0.0
 
@@ -45,6 +46,22 @@ class _RateLimiter:
             if wait > 0:
                 await asyncio.sleep(wait)
             self._next_at = max(time.monotonic(), self._next_at) + self._interval
+
+    def throttle(self) -> None:
+        """429：把放行间隔翻倍，最低降到 0.2 rps。"""
+        if self._base <= 0:
+            return
+        self._interval = min(self._interval * 2, 5.0)
+
+    def ease(self) -> None:
+        """正常返回后缓慢恢复，避免长期停留在降速档。"""
+        if self._base <= 0:
+            return
+        self._interval = max(self._base, self._interval * 0.95)
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    return "429" in str(exc)
 
 
 async def _process_item(
@@ -69,14 +86,24 @@ async def _process_item(
         # 没有正文只能写规则摘要；有正文时失败一律不写，留待下一轮重试
         await backend.update_repo_summary(repo_id, fallback_summary(metadata))
         return True
-    await limiter.acquire()
-    try:
-        summary = await summarizer.summarize(readme=readme, metadata=metadata)
-    except SummaryError as exc:
-        logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
-        raise
-    await backend.update_repo_summary(repo_id, summary)
-    return True
+
+    # 429 时等几秒再刺探一次；其余异常直接留给下一轮
+    for probe in range(2):
+        await limiter.acquire()
+        try:
+            summary = await summarizer.summarize(readme=readme, metadata=metadata)
+        except SummaryError as exc:
+            if _is_rate_limited(exc) and probe == 0:
+                limiter.throttle()
+                logger.info("summary_rate_limited_probe", repo=full_name)
+                await asyncio.sleep(5.0)
+                continue
+            logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
+            raise
+        limiter.ease()
+        await backend.update_repo_summary(repo_id, summary)
+        return True
+    return False
 
 
 async def run_summary_backfill(

@@ -106,7 +106,7 @@ class RepoSummarizer:
         return self._client
 
     async def summarize(self, *, readme: str, metadata: dict[str, object]) -> str:
-        """返回 ≤500 字符的摘要；调用失败抛 SummaryError，由调用方降级。"""
+        """返回 ≤500 字符的摘要；调用失败抛 SummaryError，由调用方决定是否重试。"""
         prompt = render_input(readme, metadata)
         attempts = 2
         last_error: Exception | None = None
@@ -115,7 +115,9 @@ class RepoSummarizer:
                 text = await self._chat(prompt)
             except Exception as exc:  # 限流、超时、空输出统一退避重试
                 last_error = exc
-                await asyncio.sleep(min(2.0 * (2**attempt), 6.0))
+                # 429 交给调用方做刺探式重试，这里只做一次短退避
+                delay = 5.0 if "429" in str(exc) else min(2.0 * (2**attempt), 6.0)
+                await asyncio.sleep(delay)
                 continue
             cleaned = " ".join(text.split()).strip()
             if cleaned:
