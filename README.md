@@ -259,7 +259,8 @@ uv run python -m worker
 |---|---|
 | `GITHUB_TOKEN` | GitHub PAT，用于提升 Search / REST 限流 |
 | `SYNC_ENABLED` | 是否启用定时采集，本地开发可设 `false` |
-| `SYNC_MAX_REPOS` / `SYNC_INCREMENTAL_BATCH` | 仓库总量目标（默认 2000）/ 每小时增量刷新数（默认 200） |
+| `SYNC_MAX_REPOS` / `SYNC_INCREMENTAL_BATCH` | 仓库总量目标（默认 3000）/ 每小时增量刷新数（默认 200） |
+| `SYNC_APPLICATION_BATCH` / `SYNC_APPLICATION_TOPIC_BATCH` | 新增名额优先给可落地成品的条数（默认 1000）/ 单个应用形态 topic 上限（默认 200） |
 | `SYNC_ACTIVE_DAYS` / `SYNC_LANGUAGE_BATCH` | 活跃判定天数（默认 90）/ 每种语言补齐上限（默认 100） |
 | `SYNC_RELEASE_REFRESH` | 每日 Release 刷新上限（默认 2000） |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth App 凭据；回调地址填 `http://<host>/api/auth/github/callback` |

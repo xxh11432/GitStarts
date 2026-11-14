@@ -74,10 +74,13 @@ github:
   sync-enabled: ${SYNC_ENABLED:true}
   # 分层发现：Search API 单查询最多 1000 条，总量靠多趟查询 + full_name 去重达到目标
   sync:
-    max-repos: ${SYNC_MAX_REPOS:2000}
+    max-repos: ${SYNC_MAX_REPOS:3000}
     incremental-batch: ${SYNC_INCREMENTAL_BATCH:200}
     active-days: ${SYNC_ACTIVE_DAYS:90}
     language-batch: ${SYNC_LANGUAGE_BATCH:100}
+    # 新增名额优先给「可落地成品」：按 self-hosted / web-app 等应用形态 topic 拉取
+    application-batch: ${SYNC_APPLICATION_BATCH:1000}
+    application-topic-batch: ${SYNC_APPLICATION_TOPIC_BATCH:200}
     release-refresh-daily: ${SYNC_RELEASE_REFRESH:2000}
 
 app:

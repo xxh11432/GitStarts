@@ -43,12 +43,35 @@ public class SyncService {
     private static final int TIER_STARS_ACTIVE = 1000;
     private static final int TIER_STARS_RECENT = 300;
     private static final int TIER_STARS_LANGUAGE = 300;
+    // 应用成品层门槛：200 star 以上才具备基本可用度，避免把玩具项目拉进库
+    private static final int TIER_STARS_APPLICATION = 200;
 
     private static final List<String> TOP_LANGUAGES = List.of(
             "Java", "JavaScript", "TypeScript", "Python", "Go", "Rust", "C++", "C",
             "C#", "PHP", "Ruby", "Swift", "Kotlin", "Scala", "Dart", "Shell", "HTML", "CSS");
 
-    @Value("${github.sync.max-repos:2000}")
+    /*
+     * 应用成品发现：只查「有完整产品形态」的 topic，避免把 langchain、langgraph 这类
+     * 大框架拉进库。框架仓库没有 self-hosted / web-app / admin-dashboard 这类 topic，
+     * 因此不会命中这些查询。
+     */
+    private static final List<String> APPLICATION_TOPICS = List.of(
+            "self-hosted", "selfhosted", "homelab", "docker-compose",
+            "web-app", "admin-dashboard", "dashboard",
+            "cms", "crm", "erp", "note-taking", "bookmark-manager",
+            "file-sharing", "monitoring", "workflow-automation",
+            "low-code", "no-code", "project-management", "e-commerce",
+            "blog", "forum", "chat",
+            "portfolio-project", "full-stack", "fullstack", "side-project");
+
+    // 兜底排除：列表仓库、模板仓库与显式框架/SDK 标签，都不属于「拿来即用」的成品
+    private static final String APPLICATION_NEGATIVE_FILTERS =
+            " -topic:framework -topic:sdk -topic:library -topic:ui-library"
+                    + " -topic:component-library -topic:components"
+                    + " -topic:awesome-list -topic:awesome -topic:dotfiles"
+                    + " -topic:boilerplate -topic:template";
+
+    @Value("${github.sync.max-repos:3000}")
     private int maxRepos;
 
     @Value("${github.sync.incremental-batch:200}")
@@ -59,6 +82,12 @@ public class SyncService {
 
     @Value("${github.sync.language-batch:100}")
     private int languageBatch;
+
+    @Value("${github.sync.application-batch:1000}")
+    private int applicationBatch;
+
+    @Value("${github.sync.application-topic-batch:200}")
+    private int applicationTopicBatch;
 
     @Value("${github.sync.release-refresh-daily:2000}")
     private int releaseRefreshDaily;
@@ -146,8 +175,10 @@ public class SyncService {
     }
 
     /**
-     * 分层发现：单条 Search 查询最多 1000 条，按「高星 → 近期活跃 → 近期热点 → 语言补齐」
-     * 多趟拉取，依赖 full_name 唯一键去重，直到仓库总量达到 github.sync.max-repos。
+     * 分层发现：单条 Search 查询最多 1000 条。
+     * 先按「可落地成品」主题拉取，优先占用本次剩余名额；不足时再由
+     * 「高星 → 近期活跃 → 近期热点 → 语言补齐」补齐，依赖 full_name 唯一键去重，
+     * 直到仓库总量达到 github.sync.max-repos。
      */
     public int discoverySync() {
         if (!tryLock("discovery")) {
@@ -158,6 +189,10 @@ public class SyncService {
         SyncStats stats = new SyncStats();
         try {
             LocalDateTime now = LocalDateTime.now();
+            int target = remaining();
+            int applicationAdded = collectApplicationTiers(now, stats);
+            log.info("应用成品层完成，本次待补 {} 条，新增 {} 条，剩余名额 {}",
+                    target, applicationAdded, remaining());
             collectTier("stars:>=" + TIER_STARS_PRIMARY + " archived:false",
                     "stars", "desc", PER_QUERY_CAP, stats);
             collectTier("stars:>=" + TIER_STARS_ACTIVE + " pushed:>=" + dateFrom(now.minusDays(activeDays))
@@ -226,15 +261,18 @@ public class SyncService {
     /**
      * 拉取一层查询并入库；每页开始前按 MySQL 实际总量与目标差额判断是否继续，
      * 单层搜索失败只跳过该层，不影响后续分层。
+     *
+     * @return 本层实际新增（insert）的仓库数，已存在的只更新、不计入配额
      */
-    private void collectTier(String query, String sort, String order, int tierCap, SyncStats stats) {
+    private int collectTier(String query, String sort, String order, int tierCap, SyncStats stats) {
         int fetched = 0;
+        int added = 0;
         int page = 1;
         while (fetched < tierCap) {
             // 只按「新增」消耗配额：命中已存在仓库时 upsert 只更新，不占用目标名额
             int room = remaining();
             if (room <= 0) {
-                return;
+                return added;
             }
             JsonNode result;
             try {
@@ -242,11 +280,11 @@ public class SyncService {
             } catch (Exception e) {
                 log.warn("分层查询失败（query={}，page={}）：{}", query, page, e.getMessage());
                 stats.failed++;
-                return;
+                return added;
             }
             JsonNode items = result.path("items");
             if (!items.isArray() || items.isEmpty()) {
-                return;
+                return added;
             }
             List<Repository> pageRepos = new ArrayList<>();
             for (JsonNode item : items) {
@@ -261,6 +299,7 @@ public class SyncService {
                     repo.setId(upsert.id());
                     if (upsert.inserted()) {
                         room--;
+                        added++;
                     }
                     pageRepos.add(repo);
                     tagService.syncTags(repo);
@@ -275,10 +314,37 @@ public class SyncService {
             }
             refreshReleasesFor(pageRepos);
             if (items.size() < PAGE_SIZE || fetched >= tierCap || room <= 0) {
-                return;
+                return added;
             }
             page++;
         }
+        return added;
+    }
+
+    /**
+     * 应用成品发现：按「自托管 / 完整应用」主题逐条拉取，优先占用本次剩余名额。
+     * 这些查询命中的是可直接部署的产品型仓库，不会把 langchain、langgraph 这类
+     * 框架拉进来；单主题失败只跳过该主题。
+     *
+     * @return 本层实际新增的仓库数
+     */
+    private int collectApplicationTiers(LocalDateTime now, SyncStats stats) {
+        if (applicationBatch <= 0) {
+            return 0;
+        }
+        int quota = Math.min(applicationBatch, remaining());
+        String suffix = " stars:>=" + TIER_STARS_APPLICATION
+                + " pushed:>=" + dateFrom(now.minusDays(180))
+                + " archived:false" + APPLICATION_NEGATIVE_FILTERS;
+        int added = 0;
+        for (String topic : APPLICATION_TOPICS) {
+            if (added >= quota || remaining() <= 0) {
+                break;
+            }
+            added += collectTier("topic:" + topic + suffix, "stars", "desc",
+                    applicationTopicBatch, stats);
+        }
+        return added;
     }
 
     private int remaining() {
