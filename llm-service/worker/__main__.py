@@ -137,9 +137,12 @@ async def bootstrap_index(
         translator=translator,
         full=full,
     )
-    if full and stats.failed == 0 and stats.processed > 0 and not settings.index_max_repos:
+    # 全量轮允许少量脏数据（README/manifest 抓取或 embedding 偶发失败）；
+    # 失败率低于 1% 即视为初始化完成，避免个别仓库导致每次重启都重扫全量。
+    failure_rate = stats.failed / stats.processed if stats.processed else 1.0
+    if full and stats.processed > 0 and failure_rate < 0.01 and not settings.index_max_repos:
         await cache.set_text(initialized_key(settings), "done")
-        logger.info("index_initialized")
+        logger.info("index_initialized", processed=stats.processed, failed=stats.failed)
 
 
 async def run_incremental(
