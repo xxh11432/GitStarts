@@ -1,10 +1,11 @@
 """仓库摘要并发回填：只处理 repo_summary 为空的仓库，直接读文档库里的已存 README。
 
-独立于索引主流程：索引受 GitHub 限流约束必须串行，摘要是纯模型调用，可以按配置并发。
+独立于索引主流程，串行处理：模型账号按分钟限流（60 rpm），并发只会换来 429，
+所以一次只发一条请求，靠 SUMMARY_BACKFILL_RPS 控制放行节奏。
 用法（容器内）：
 
     python -m worker.summary_backfill
-    SUMMARY_BACKFILL_CONCURRENCY=40 python -m worker.summary_backfill
+    SUMMARY_BACKFILL_RPS=1.0 python -m worker.summary_backfill
 """
 
 from __future__ import annotations
@@ -101,23 +102,24 @@ async def run_summary_backfill(
     backend: BackendClient,
     summarizer: RepoSummarizer,
     cache: CacheClient | None = None,
-    concurrency: int | None = None,
 ) -> dict[str, int]:
     stats = {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0}
     if cache is not None and not await cache.acquire_lock(LOCK_KEY, LOCK_TTL_SECONDS):
         logger.warning("summary_backfill_locked")
         return stats
 
-    workers = max(1, concurrency or settings.summary_backfill_concurrency)
     limiter = _RateLimiter(settings.summary_backfill_rps)
-    queue: asyncio.Queue[dict[str, object] | None] = asyncio.Queue(maxsize=workers * 4)
-
-    async def consume() -> None:
+    try:
+        cursor = 0
         while True:
-            item = await queue.get()
-            try:
-                if item is None:
-                    return
+            page = await backend.list_index_repos(cursor=cursor, limit=PAGE_SIZE)
+            items = page.get("items") or []
+            if not items:
+                break
+            for item in items:
+                if item.get("repoSummary"):
+                    stats["skipped"] += 1
+                    continue
                 try:
                     ok = await _process_item(
                         item,
@@ -138,30 +140,10 @@ async def run_summary_backfill(
                 stats["processed"] += 1
                 if stats["processed"] % PROGRESS_EVERY == 0:
                     logger.info("summary_backfill_progress", **stats)
-            finally:
-                queue.task_done()
-
-    async def produce() -> None:
-        cursor = 0
-        while True:
-            page = await backend.list_index_repos(cursor=cursor, limit=PAGE_SIZE)
-            items = page.get("items") or []
-            if not items:
-                break
-            for item in items:
-                if item.get("repoSummary"):
-                    stats["skipped"] += 1
-                    continue
-                await queue.put(item)
             next_cursor = page.get("nextCursor")
             if next_cursor is None:
                 break
             cursor = int(next_cursor)
-        for _ in range(workers):
-            await queue.put(None)
-
-    try:
-        await asyncio.gather(produce(), *[consume() for _ in range(workers)])
         logger.info("summary_backfill_finished", **stats)
         return stats
     finally:
@@ -177,7 +159,6 @@ async def main() -> None:
     cache = CacheClient(settings)
     logger.info(
         "summary_backfill_started",
-        concurrency=settings.summary_backfill_concurrency,
         rps=settings.summary_backfill_rps,
     )
     try:
