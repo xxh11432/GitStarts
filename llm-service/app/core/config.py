@@ -126,6 +126,8 @@ class Settings(BaseSettings):
     match_group_recall_enabled: bool = True
     match_group_size: int = 2
     match_cache_version: str = "v5"
+    # rerank 文档构造：summary=只用档案摘要；summary_plus=摘要+描述+topics（A/B 实验用）
+    rerank_doc_mode: str = "summary"
 
     # Compare (M5)
     compare_schema_version: str = "v1"

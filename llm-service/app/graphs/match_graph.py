@@ -317,18 +317,21 @@ def fuse_recall_rankings(
     return [name for name, _ in ordered[: max(1, limit)]]
 
 
-def build_rerank_document(repo: dict[str, Any], hits: list[VectorHit]) -> str:
-    """候选文档：优先用仓库档案摘要（功能 + 体量/活跃度/部署/许可），缺失时回退描述与证据。"""
+def build_rerank_document(
+    repo: dict[str, Any], hits: list[VectorHit], mode: str = "summary"
+) -> str:
+    """候选文档：默认只用档案摘要；summary_plus 追加描述与 topics 保住细节词。"""
     summary = str(repo.get("repoSummary") or "").strip()
-    if summary:
+    if summary and mode != "summary_plus":
         return summary[:500]
     parts = [
+        summary,
         str(repo.get("description") or ""),
         " ".join(str(topic) for topic in (repo.get("topics") or [])[:8]),
     ]
-    if hits:
+    if not summary and hits:
         parts.append(hits[0].content[:500])
-    return "。".join(part.strip() for part in parts if part.strip())[:800]
+    return "。".join(part.strip() for part in parts if part.strip())[:1000]
 
 
 @dataclass
@@ -1110,8 +1113,10 @@ class MatchRunner:
             return 0, False
 
         names = list(candidates)
+        mode = self._settings.rerank_doc_mode
         documents = [
-            build_rerank_document(candidates[name][0], candidates[name][2]) for name in names
+            build_rerank_document(candidates[name][0], candidates[name][2], mode)
+            for name in names
         ]
         try:
             raw_scores = await self._reranker.score(query, documents)
