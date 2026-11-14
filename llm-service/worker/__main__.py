@@ -19,7 +19,8 @@ from app.core.logging import configure_logging
 from app.services.embedding import EmbeddingService
 from worker.embed import EmbeddingCache
 from worker.fetch_docs import ReadmeFetcher
-from worker.pipeline import initialized_key, run_index_pass
+from worker.pipeline import initialized_key, run_index_pass, run_translation_backfill
+from worker.translate import ReadmeTranslator
 
 logger = structlog.get_logger("worker")
 
@@ -31,6 +32,7 @@ def build_scheduler(
     embedding: EmbeddingCache,
     vector: VectorStore,
     cache: CacheClient,
+    translator: ReadmeTranslator,
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
     scheduler.add_job(
@@ -56,6 +58,7 @@ def build_scheduler(
                 "embedding": embedding,
                 "vector": vector,
                 "cache": cache,
+                "translator": translator,
             },
         )
     if settings.index_on_startup:
@@ -72,8 +75,42 @@ def build_scheduler(
                 "embedding": embedding,
                 "vector": vector,
                 "cache": cache,
+                "translator": translator,
             },
         )
+    if settings.readme_translate_enabled:
+        scheduler.add_job(
+            translate_backfill,
+            "date",
+            run_date=datetime.now() + timedelta(seconds=60),
+            id="translate_bootstrap",
+            replace_existing=True,
+            kwargs={
+                "settings": settings,
+                "backend": backend,
+                "embedding": embedding,
+                "vector": vector,
+                "cache": cache,
+                "translator": translator,
+            },
+        )
+        if settings.readme_translate_interval_minutes > 0:
+            scheduler.add_job(
+                translate_backfill,
+                "interval",
+                minutes=settings.readme_translate_interval_minutes,
+                id="translate_incremental",
+                replace_existing=True,
+                max_instances=1,
+                kwargs={
+                    "settings": settings,
+                    "backend": backend,
+                    "embedding": embedding,
+                    "vector": vector,
+                    "cache": cache,
+                    "translator": translator,
+                },
+            )
     return scheduler
 
 
@@ -85,6 +122,7 @@ async def bootstrap_index(
     embedding: EmbeddingCache,
     vector: VectorStore,
     cache: CacheClient,
+    translator: ReadmeTranslator,
 ) -> None:
     """首次启动执行全量；完成后打标记，之后只跑增量。"""
     initialized = await cache.get_text(initialized_key(settings))
@@ -96,6 +134,7 @@ async def bootstrap_index(
         embedding=embedding,
         vector=vector,
         cache=cache,
+        translator=translator,
         full=full,
     )
     if full and stats.failed == 0 and stats.processed > 0 and not settings.index_max_repos:
@@ -111,6 +150,7 @@ async def run_incremental(
     embedding: EmbeddingCache,
     vector: VectorStore,
     cache: CacheClient,
+    translator: ReadmeTranslator,
 ) -> None:
     await run_index_pass(
         settings,
@@ -119,7 +159,28 @@ async def run_incremental(
         embedding=embedding,
         vector=vector,
         cache=cache,
+        translator=translator,
         full=False,
+    )
+
+
+async def translate_backfill(
+    *,
+    settings: Settings,
+    backend: BackendClient,
+    embedding: EmbeddingCache,
+    vector: VectorStore,
+    cache: CacheClient,
+    translator: ReadmeTranslator,
+) -> None:
+    """存量 README 语言检测与翻译回填。"""
+    await run_translation_backfill(
+        settings,
+        backend=backend,
+        embedding=embedding,
+        vector=vector,
+        cache=cache,
+        translator=translator,
     )
 
 
@@ -136,8 +197,9 @@ async def main() -> None:
     vector = VectorStore(settings)
     cache = CacheClient(settings)
     embedding = EmbeddingCache(EmbeddingService(settings))
+    translator = ReadmeTranslator(settings)
 
-    scheduler = build_scheduler(settings, backend, fetcher, embedding, vector, cache)
+    scheduler = build_scheduler(settings, backend, fetcher, embedding, vector, cache, translator)
     scheduler.start()
     logger.info("worker_started", jobs=[job.id for job in scheduler.get_jobs()])
 
@@ -148,6 +210,7 @@ async def main() -> None:
         await fetcher.close()
         await vector.close()
         await cache.close()
+        await translator.close()
         logger.info("worker_stopped")
 
 

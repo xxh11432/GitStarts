@@ -8,5 +8,7 @@ public record RepoDocumentUpsertRequest(
         String sha,
         String etag,
         String content,
-        Integer tokenCount) {
+        Integer tokenCount,
+        /** README 语言状态：0=英文原文，1=已翻译，2=翻译失败；null 表示本次不更新。 */
+        Integer lang) {
 }

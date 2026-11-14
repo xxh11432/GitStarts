@@ -294,6 +294,7 @@ class BackendClient:
         etag: str | None,
         content: str,
         token_count: int,
+        lang: int | None = None,
     ) -> int:
         body = await self._request(
             "POST",
@@ -306,9 +307,20 @@ class BackendClient:
                 "etag": etag,
                 "content": content,
                 "tokenCount": token_count,
+                "lang": lang,
             },
         )
         return int(body["id"])
+
+    async def list_pending_docs(
+        self, *, cursor: int | None = None, limit: int = 10
+    ) -> dict[str, Any]:
+        """待语言检测 / 翻译失败的 README（存量回填）。"""
+        return await self._request(
+            "GET",
+            "/internal/repo-documents/pending",
+            params={"cursor": cursor, "limit": limit},
+        )
 
     async def mark_indexed(self, repo_ids: list[int]) -> None:
         if not repo_ids:

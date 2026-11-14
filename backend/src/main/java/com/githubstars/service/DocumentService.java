@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.githubstars.dto.IndexRepoItem;
 import com.githubstars.dto.IndexRepoPage;
+import com.githubstars.dto.PendingDocItem;
+import com.githubstars.dto.PendingDocPage;
 import com.githubstars.dto.RepoDocumentUpsertRequest;
 import com.githubstars.dto.RepoResponse;
 import com.githubstars.entity.RepoDocument;
@@ -71,6 +73,44 @@ public class DocumentService {
         return new IndexRepoPage(items, nextCursor);
     }
 
+    /**
+     * 语言检测回填：返回尚未检测（lang_checked_at 为空）或翻译失败（lang=2）的 README。
+     * 由 ingest-worker 定期拉取，翻译成功后回写 content 与 lang。
+     */
+    public PendingDocPage listPendingLangDocs(Long cursor, int limit) {
+        int pageSize = Math.min(Math.max(limit, 1), 50);
+        long after = cursor == null ? 0L : cursor;
+        List<RepoDocument> docs = documentMapper.selectList(
+                new LambdaQueryWrapper<RepoDocument>()
+                        .eq(RepoDocument::getKind, KIND_README)
+                        .gt(RepoDocument::getRepoId, after)
+                        .isNotNull(RepoDocument::getContent)
+                        .ne(RepoDocument::getContent, "")
+                        .and(w -> w.isNull(RepoDocument::getLangCheckedAt)
+                                .or()
+                                .eq(RepoDocument::getLang, 2))
+                        .orderByAsc(RepoDocument::getRepoId)
+                        .last("LIMIT " + pageSize));
+        if (docs.isEmpty()) {
+            return new PendingDocPage(List.of(), null);
+        }
+        List<Long> repoIds = docs.stream().map(RepoDocument::getRepoId).toList();
+        Map<Long, Repository> repos = repositoryMapper.selectBatchIds(repoIds).stream()
+                .collect(Collectors.toMap(Repository::getId, repo -> repo));
+        List<PendingDocItem> items = docs.stream()
+                .filter(doc -> repos.containsKey(doc.getRepoId()))
+                .map(doc -> {
+                    Repository repo = repos.get(doc.getRepoId());
+                    return new PendingDocItem(doc.getRepoId(), repo.getFullName(), doc.getSourceUrl(),
+                            doc.getSha(), doc.getEtag(), doc.getContent(), doc.getTokenCount(),
+                            doc.getLang(), repo.getPushedAt(), repo.getLanguage(), repo.getCategory(),
+                            repo.getLicense(), repo.getPlatform(), repo.getStars());
+                })
+                .toList();
+        Long nextCursor = docs.get(docs.size() - 1).getRepoId();
+        return new PendingDocPage(items, nextCursor);
+    }
+
     public Long upsert(RepoDocumentUpsertRequest request) {
         if (request.repoId() == null) {
             throw new IllegalArgumentException("repoId 必填");
@@ -97,6 +137,11 @@ public class DocumentService {
         document.setEtag(request.etag());
         document.setContent(request.content());
         document.setTokenCount(request.tokenCount());
+        if (request.lang() != null) {
+            // 只有 worker 明确上报语言状态时才覆盖，manifest 等其它 kind 不受影响
+            document.setLang(request.lang());
+            document.setLangCheckedAt(now);
+        }
         document.setFetchedAt(now);
         if (existing == null) {
             documentMapper.insert(document);

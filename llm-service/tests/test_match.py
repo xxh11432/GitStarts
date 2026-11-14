@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -10,13 +11,13 @@ from app.graphs.match_graph import (
     MatchRunner,
     build_rerank_document,
     build_rerank_query,
-    build_search_queries,
+    build_semantic_queries,
     collect_hard_filters,
     evaluate_condition,
     fit_candidate,
+    fuse_recall_rankings,
     normalize_requirement,
     parse_requirement,
-    rrf_scores,
 )
 from app.schemas.match import (
     Condition,
@@ -33,9 +34,12 @@ class FakeLlm:
         self,
         *,
         requirement: LlmRequirement | None = None,
+        rewrite: str = "data analytics dashboard",
     ) -> None:
         self._requirement = requirement
+        self._rewrite = rewrite
         self.calls = 0
+        self.rewrites = 0
 
     def with_structured_output(self, schema: type, method: str | None = None) -> Any:
         outer = self
@@ -46,6 +50,10 @@ class FakeLlm:
                 return outer._requirement or LlmRequirement(goal="兜底目标")
 
         return Runnable()
+
+    async def ainvoke(self, messages: list[Any], config: Any = None) -> Any:
+        self.rewrites += 1
+        return SimpleNamespace(content=self._rewrite)
 
 
 class FakeBackend:
@@ -260,8 +268,8 @@ async def test_match_with_structured_conditions(settings: Settings) -> None:
     candidate = candidates[0]
     assert candidate["repo"]["fullName"] == "langgenius/dify"
     assert candidate["fit"] > 0
-    # semantic 现在是多路 RRF 归一化值（两路都排第一 → 1.0），不再是原始 cosine
-    assert candidate["breakdown"]["semantic"] == pytest.approx(1.0)
+    # 未配置 reranker 时 semantic 保持 0，排序由 fit 决定
+    assert candidate["breakdown"]["semantic"] == pytest.approx(0.0)
     assert candidate["breakdown"]["coverage"] == 1.0
     assert any(check["status"] == "hit" for check in candidate["conditions"])
     assert candidate["evidence"][0]["section"] == "Features"
@@ -287,6 +295,8 @@ async def test_match_parses_raw_text_with_llm(settings: Settings) -> None:
     parsed = next(event for event in events if event.name == "parsed").data
     assert parsed["requirement"]["goal"] == "数据分析看板"
     assert parsed["requirement"]["degraded"] is False
+    # 中文 goal 经术语归一化得到英文 query（看板→dashboard），无需再调模型改写
+    assert parsed["requirement"]["search_query"] == "dashboard"
     assert backend.created[0]["raw_text"] == "想要一个能部署在 Linux 的数据分析看板"
 
 
@@ -321,30 +331,40 @@ async def test_match_uses_cached_result(settings: Settings) -> None:
     assert second[0].name == "parsed"
 
 
-def test_hard_filters_and_condition_states() -> None:
+def test_hard_filters_only_keep_platform_and_language() -> None:
     requirement = Requirement(
         must=[
             Condition(key="platform", value=["Windows", "macOS"]),
+            Condition(key="language", value="python"),
             Condition(key="license", value="MIT"),
+            Condition(key="category", value="RAG"),
             Condition(key="min_stars", value=100),
             Condition(key="active_within_days", value=365),
         ]
     )
     filters = collect_hard_filters(requirement)
+    # 只有 platform / language 参与召回过滤，其余一律不放行
     assert filters.platforms == ["windows", "mac"]
-    assert filters.licenses == ["mit"]
-    assert filters.min_stars == 100
-    assert filters.active_within_days == 365
+    assert filters.languages == ["Python"]
 
-    repo = {"platform": "macos", "license": "MIT", "stars": 500, "pushedAt": "2025-01-01T00:00:00"}
-    assert evaluate_condition(requirement.must[0], repo, "").status == "hit"
+    repo = {
+        "platform": "macos",
+        "language": "Python",
+        "license": "MIT",
+        "category": "RAG",
+        "stars": 500,
+        "pushedAt": "2025-01-01T00:00:00",
+    }
+    # 未参与过滤的条件仍用于契合度判定
     assert evaluate_condition(requirement.must[1], repo, "").status == "hit"
     assert evaluate_condition(requirement.must[2], repo, "").status == "hit"
+    assert evaluate_condition(requirement.must[3], repo, "").status == "hit"
+    assert evaluate_condition(requirement.must[4], repo, "").status == "hit"
 
     unknown = {"platform": "other", "license": None, "stars": 10, "pushedAt": None}
     assert evaluate_condition(requirement.must[0], unknown, "").status == "miss"
-    assert evaluate_condition(requirement.must[1], unknown, "").status == "unknown"
-    assert evaluate_condition(requirement.must[3], unknown, "").status == "unknown"
+    assert evaluate_condition(requirement.must[2], unknown, "").status == "unknown"
+    assert evaluate_condition(requirement.must[5], unknown, "").status == "unknown"
 
 
 def test_non_platform_values_do_not_become_hard_filters() -> None:
@@ -357,28 +377,25 @@ def test_non_platform_values_do_not_become_hard_filters() -> None:
     assert evaluate_condition(requirement.must[0], {"platform": "other"}, "").status == "unknown"
 
 
-def test_language_and_license_are_normalized_for_filters_and_checks() -> None:
-    requirement = Requirement(
-        must=[
-            Condition(key="language", value="python"),
-            Condition(key="license", value="MIT"),
-        ]
+def test_vector_filter_only_contains_language_and_platform() -> None:
+    filters = collect_hard_filters(
+        Requirement(
+            must=[
+                Condition(key="language", value="python"),
+                Condition(key="platform", value="linux"),
+                Condition(key="license", value="MIT"),
+                Condition(key="category", value="RAG"),
+                Condition(key="min_stars", value=100),
+            ]
+        )
     )
-    filters = collect_hard_filters(requirement)
-    # GitHub 的语言名是 "Python"，许可证 spdx_id 常大写；过滤前必须归一化。
-    assert filters.languages == ["Python"]
-    assert filters.licenses == ["mit"]
-
-    repo = {"language": "Python", "license": "mit"}
-    assert evaluate_condition(requirement.must[0], repo, "").status == "hit"
-    assert evaluate_condition(requirement.must[1], repo, "").status == "hit"
-
-    vector_filter = build_filter(languages=filters.languages, licenses=filters.licenses)
+    vector_filter = build_filter(
+        languages=filters.languages or None,
+        platforms=filters.platforms or None,
+    )
     assert vector_filter is not None
-    conditions = {condition.key: condition for condition in vector_filter.must}
-    assert "Python" in conditions["language"].match.any
-    assert "mit" in conditions["license"].match.any
-    assert "MIT" in conditions["license"].match.any
+    keys = {condition.key for condition in vector_filter.must}
+    assert keys == {"language", "platform"}
 
 
 def test_fit_candidate_breakdown_and_risks() -> None:
@@ -494,43 +511,102 @@ async def test_match_ranks_by_fit_without_llm_rerank(settings: Settings) -> None
     assert "rerank_scored" in runner.recall_stats
 
 
-def test_build_search_queries_is_short_and_deduped() -> None:
+def test_build_semantic_queries_returns_single_english_query() -> None:
     requirement = Requirement(
         goal="私有部署知识库",
         search_query="self-hosted knowledge base RAG",
-        keywords=["ragflow", "dify"],
+        keywords=["knowledge base", "dify"],
         must=[Condition(key="license", value="MIT")],
     )
-    queries = build_search_queries(requirement, "很长的用户原文" * 100, max_queries=3)
-    assert len(queries) == 3
-    assert queries[0] == "私有部署知识库"
-    assert queries[1] == "self-hosted knowledge base RAG ragflow dify"
-    assert "license MIT" in queries[2]
+    queries = build_semantic_queries(requirement)
+    assert queries == ["self-hosted knowledge base RAG"]
     assert all(len(query) <= 200 for query in queries)
 
-    # 只有 goal 时不重复出同一条 query
-    single = build_search_queries(Requirement(goal="知识库"), None, max_queries=3)
-    assert single == ["知识库"]
+
+def test_build_semantic_queries_skips_non_english_query() -> None:
+    # 无英文内容的 query 不进入向量通道；英文改写由 runner 在召回前完成
+    assert build_semantic_queries(Requirement(goal="知识库")) == []
+    assert build_semantic_queries(
+        Requirement(goal="知识库", search_query="纯中文描述")
+    ) == []
 
 
-def test_build_search_queries_falls_back_when_degraded() -> None:
-    requirement = Requirement(goal="只用原文检索", degraded=True)
-    queries = build_search_queries(requirement, "需要支持私有部署的笔记工具", max_queries=3)
-    assert queries == ["只用原文检索 需要支持私有部署的笔记工具"]
+def test_fuse_recall_rankings_equal_weight_and_limit() -> None:
+    # 两路都命中的 c 排第一；单路各自的第 1 名紧随其后
+    assert fuse_recall_rankings(["a", "b", "c"], ["c", "d"], limit=10) == [
+        "c",
+        "a",
+        "b",
+        "d",
+    ]
+    # 两路权重各 50%：只出现在单路第 1 名时得分完全一致
+    assert fuse_recall_rankings(["x"], [], limit=1) == ["x"]
+    assert fuse_recall_rankings([], ["x"], limit=1) == ["x"]
+    # 只保留前 limit 个仓库进入精排
+    vector_ranking = [f"repo-{index}" for index in range(100)]
+    assert len(fuse_recall_rankings(vector_ranking, [], limit=60)) == 60
 
 
-def test_rrf_scores_use_linear_decay() -> None:
-    scores = rrf_scores([["a/b", "c/d"], ["c/d", "e/f"]], decay=0.02)
-    # c/d 两路都命中（名次 2 和 1），高于只命中一路的 a/b
-    assert scores["c/d"] > scores["a/b"]
-    assert scores["c/d"] > scores["e/f"]
-    assert all(0.0 <= value <= 1.0 for value in scores.values())
+async def test_keyword_only_repo_enters_rrf_pool(settings: Settings) -> None:
+    class KeywordBackend(FakeBackend):
+        async def search_repos(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "fullName": "foo/keyword-only",
+                    "description": "keyword only repo",
+                    "language": "Python",
+                    "license": "MIT",
+                    "category": "AI",
+                    "platform": "linux",
+                    "stars": 100,
+                    "pushedAt": "2025-08-01T00:00:00",
+                    "topics": [],
+                }
+            ]
 
-    # 单通道内名次差异必须明显：rank1=1.0，rank10=0.82
-    single = rrf_scores([["a/b"] + [f"r{i}/x" for i in range(2, 11)]], decay=0.02)
-    assert single["a/b"] == pytest.approx(1.0)
-    assert single["r10/x"] == pytest.approx(0.82)
-    assert single["a/b"] - single["r10/x"] == pytest.approx(0.18)
+    backend = KeywordBackend(
+        [
+            *FakeBackend().repos,
+            {
+                "fullName": "foo/keyword-only",
+                "description": "keyword only repo",
+                "language": "Python",
+                "license": "MIT",
+                "category": "AI",
+                "platform": "linux",
+                "stars": 100,
+                "pushedAt": "2025-08-01T00:00:00",
+                "topics": [],
+            },
+        ]
+    )
+    vector = FakeGroupVector(
+        [
+            VectorGroup(
+                repo_id=1,
+                full_name="langgenius/dify",
+                best_score=0.81,
+                hits=[],
+            )
+        ]
+    )
+    runner = _runner(settings, backend, vector, FakeLlm())  # type: ignore[arg-type]
+    events = await _collect(
+        runner,
+        MatchRequest(
+            raw_text="AI platform",
+            structured=Requirement(
+                goal="AI platform",
+                search_query="AI platform",
+                keywords=["keyword-only"],
+            ),
+        ),
+    )
+
+    pool = runner.recall_stats["pool_names"]
+    assert "foo/keyword-only" in pool
+    assert "langgenius/dify" in pool
+    assert len([event for event in events if event.name == "candidate"]) >= 1
 
 
 async def test_group_recall_returns_repo_level_pool(settings: Settings) -> None:
@@ -595,6 +671,8 @@ async def test_group_recall_returns_repo_level_pool(settings: Settings) -> None:
     assert group_size == settings.match_group_size
     # limit 语义是仓库数：只返回 2 个仓库，不会因为一个仓库多块而膨胀
     assert runner.recall_stats["vector_repos"] == 2
+    # 英文单路召回：每次查询只走一条向量通道
+    assert len(vector.calls) == 1
     assert runner.recall_stats["vector_groups"] == 2
 
     candidates = [event.data for event in events if event.name == "candidate"]
@@ -610,7 +688,7 @@ def test_cache_key_carries_pipeline_version(settings: Settings) -> None:
     key = runner._cache_key(request, USER_ID, 6)
     assert key.startswith(f"match:{settings.match_cache_version}:{USER_ID}:")
 
-    newer = Settings(match_cache_version="v3")
+    newer = Settings(match_cache_version="v-next")
     other = _runner(newer, FakeBackend(), FakeVector([]), FakeLlm())
     assert other._cache_key(request, USER_ID, 6) != key
 
@@ -618,7 +696,10 @@ def test_cache_key_carries_pipeline_version(settings: Settings) -> None:
 def test_rerank_query_and_document_builders() -> None:
     requirement = Requirement(goal="知识库", search_query="self-hosted RAG")
     assert build_rerank_query(requirement, "原文") == "self-hosted RAG"
-    assert build_rerank_query(Requirement(goal="知识库"), "原文") == "知识库"
+    # 无英文检索句时用英文 goal / 别名归一出英文；仍无英文则不进入交叉编码器
+    assert build_rerank_query(Requirement(goal="知识库"), "原文") == "knowledge base"
+    assert build_rerank_query(Requirement(goal="纯中文"), "纯中文原文") == ""
+    assert build_rerank_query(Requirement(goal="knowledge base"), None) == "knowledge base"
 
     document = build_rerank_document(
         {"description": "开源知识库", "topics": ["rag", "search"]},
@@ -711,16 +792,20 @@ def _rerank_fixture() -> tuple[FakeBackend, FakeGroupVector, list[VectorGroup]]:
     return backend, FakeGroupVector(groups), groups
 
 
-async def test_rerank_fuses_with_rrf_scores(settings: Settings) -> None:
+async def test_rerank_sets_semantic_score(settings: Settings) -> None:
     backend, vector, _ = _rerank_fixture()
     reranker = FakeReranker([0.1, 0.9])
     runner = _runner(settings, backend, vector, FakeLlm(), reranker=reranker)  # type: ignore[arg-type]
     events = await _collect(
         runner,
-        MatchRequest(raw_text="AI 平台", structured=Requirement(goal="AI 平台")),
+        MatchRequest(
+            raw_text="AI 平台",
+            structured=Requirement(goal="AI 平台", search_query="AI platform"),
+        ),
     )
 
-    assert reranker.queries == ["AI 平台"]
+    # normalize_search_query 会清掉 platform 这类泛词，因此只保留 AI
+    assert reranker.queries == ["AI"]
     assert runner.recall_stats["rerank_scored"] == 2
     assert runner.recall_stats["rerank_failed"] is False
 
@@ -729,14 +814,12 @@ async def test_rerank_fuses_with_rrf_scores(settings: Settings) -> None:
         for event in events
         if event.name == "candidate"
     }
-    # rerank 把 foo/next 排到第一，融合后 semantic 应反超 RRF 排名第一的 dify
-    assert (
-        candidates["foo/next"]["breakdown"]["semantic"]
-        > candidates["langgenius/dify"]["breakdown"]["semantic"]
-    )
+    # 取消 RRF 后 semantic 直接等于 rerank 分数
+    assert candidates["foo/next"]["breakdown"]["semantic"] == pytest.approx(0.9)
+    assert candidates["langgenius/dify"]["breakdown"]["semantic"] == pytest.approx(0.1)
 
 
-async def test_rerank_failure_keeps_rrf_scores(settings: Settings) -> None:
+async def test_rerank_failure_keeps_zero_semantic(settings: Settings) -> None:
     backend, vector, _ = _rerank_fixture()
     runner = _runner(settings, backend, vector, FakeLlm(), reranker=BrokenReranker())  # type: ignore[arg-type]
     events = await _collect(
@@ -752,6 +835,9 @@ async def test_rerank_failure_keeps_rrf_scores(settings: Settings) -> None:
         for event in events
         if event.name == "candidate"
     }
-    # 接口失败时保留原 RRF 分数：三路都排第一的 dify 仍为 1.0
-    assert candidates["langgenius/dify"]["breakdown"]["semantic"] == pytest.approx(1.0)
+    # 接口失败时没有可用的语义分，全部回落到 fit 排序
+    assert all(
+        candidate["breakdown"]["semantic"] == pytest.approx(0.0)
+        for candidate in candidates.values()
+    )
 

@@ -86,13 +86,13 @@ fit = 0.70 × 语义相关
 - **M1 账号会话与配额**：GitHub OAuth 登录闭环、Spring Session Redis（7 天）、每日配额 MySQL 原子扣减 + 幂等账本、`/ai/**` 未登录 401（Nginx auth_request）、登录页与 `/me`、`/compare` 路由保护
 - **M2 仓库数据补强**：`platform` 规则推导与筛选、许可证与更新时间筛选、详情页 README 摘要与相关推荐、首页平台/统计模块、列表与详情新视觉及移动端筛选抽屉
 - **M3 AI 对话 MVP**：`/ai/chat/stream` SSE 流式（`meta` / `status` / `tool` / `repos` / `delta` / `done` / `error`）、工具调用（`search_repos` / `get_repo` / `get_rank`）、首页对话与仓库卡、会话与消息异步落库
-- **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 标题分块 → embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（结构化 → 严格硬过滤 → 分组召回 + 关键词补充 → 线性衰减融合 → 交叉编码 rerank → 语义主排序 + 契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 LLM-as-Judge 相关性报告
+- **M4 语义索引与匹配**：README 抓取清洗（ETag 条件请求 + 退避）→ 非英文 README 先翻译为英文 → 标题分块 → embedding → Qdrant 幂等写入；全量首建与增量调度（Redis 锁、游标续跑）；`/ai/match` SSE（英文 query 改写 → 分组向量召回 + BM25 关键词 → 双路 RRF 融合取前 60 → `bge-reranker-v2-m3` 精排 → 语义主排序 + 契合度）；`ideas` 落库与条件编辑；`/match` 匹配工作台；离线评测数据集与 LLM-as-Judge 相关性报告
 - **M5 深读与对比工作台**：关键 manifest 抓取入索引；`/ai/compare` SSE（`plan` / `cell` / `verdict` / `done` / `error`）；8 维逐格证据与「信息不足」兜底；单仓失败降级不拖垮整体；Redis checkpoint（1h）断流续跑 + 结果缓存（7 天，命中不计费）；`comparisons` 落库、历史与只读分享链接；`/compare` 工作台（差异高亮、证据抽屉、Markdown 导出）与 `/compare/s/{token}` 分享页
 - **M6 个性化沉淀**：收藏与备注（`favorites`，跨会话一致）；`/me` 完整化（配额、想法、对比、收藏、会话入口）；对比历史 / 想法 / 会话历史的列表与详情；技能 / 兴趣 / 偏好画像与规则推荐位；对比分享链接可撤销、记录可删除；账号删除时清理全部个人数据
 - **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 按 IP 限流 / 关闭图片优化器；Redis AOF 与容器健康检查；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
 - **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比缓存先于配额判断；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
 - **活跃度采集与排序**：`heat_score`（Star 体量 × 近期推送衰减）随采集更新、启动时回填；`/repos?sort=active`、排行榜「活跃综合榜」与筛选器均支持
-- **RAG 召回优化（2026-11-13）**：分组召回（`group_by=repo_id`，60 仓库）、`search_query` 多短查询、通道内线性衰减融合（`decay=0.02`）、`bge-reranker-v2-m3` 全池重排、语义主排序、fit 权重 `0.70/0.15/0.15`；移除过滤放宽、热度兜底与 LLM 重排；评测改为 LLM-as-Judge 主口径（21 条用例 / 43 个在库标注仓库）
+- **RAG 召回优化（2026-11-14）**：提问改写强制输出英文（中文提问自动翻译），取消中文召回通道；向量分组召回 60 + BM25 关键词 60，双路加权 RRF（各 50%，k=60）融合后只保留前 60 进入 `bge-reranker-v2-m3` 精排；语义主排序、fit 权重 `0.70/0.15/0.15`；README 入库前统一翻译为英文，`repo_documents.lang` 记录 0=英文原文 / 1=已翻译 / 2=翻译失败，存量由 worker 增量回填；评测为 LLM-as-Judge 主口径（21 条用例）
 
 **已上线**
 
@@ -106,7 +106,7 @@ fit = 0.70 × 语义相关
 | M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 已完成 |
 | M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 已完成 |
 | M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 已完成 |
-| M8 | 检索精度提升：分组召回、线性衰减融合、交叉编码 rerank、语义主排序、LLM-as-Judge 评测 | 进行中（P0 已实现，待 21 条新基线复测） |
+| M8 | 检索精度提升：英文单路改写、双路 RRF、交叉编码 rerank、README 翻译归一、LLM-as-Judge 评测 | 已上线（RRF 50/50 首版，待索引稳定后复测调权） |
 
 ## 架构
 
@@ -289,20 +289,23 @@ uv run python -m worker
 | `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址与集合名（默认 `repo_chunks`；更换 embedding 模型时使用新集合名，如 `repo_chunks_bge_m3`） |
 | `INDEX_ON_STARTUP` / `INDEX_INTERVAL_MINUTES` | worker 首次是否全量、之后增量扫描间隔（分钟） |
 | `INDEX_FULL_REBUILD` / `INDEX_MAX_REPOS` | 强制重扫全部仓库 / 小样本仓库数上限（0 为不限） |
-| `MATCH_RECALL_LIMIT` | 仓库级召回数（分组召回后 limit 表示仓库数，默认 60） |
+| `MATCH_RECALL_LIMIT` | 向量、关键词各自召回数，也是 RRF 融合后进入 rerank 的仓库上限（默认 60） |
 | `RERANK_ENABLED` / `RERANK_MODEL` | 是否启用交叉编码 rerank / 模型名（默认 true / `BAAI/bge-reranker-v2-m3`） |
 | `RERANK_BASE_URL` / `RERANK_API_KEY` | rerank 接口地址与 Key；留空时复用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` |
-| `RERANK_BATCH_SIZE` / `RERANK_WEIGHT` | rerank 每批文档数 / 与 RRF 的融合权重（默认 32 / 0.6） |
+| `RERANK_BATCH_SIZE` | rerank 每批文档数（默认 32） |
 | `RERANK_TIMEOUT_SECONDS` | rerank 接口超时秒数（默认 20） |
-| `MATCH_KEYWORD_LIMIT` | 每个关键词在站内检索的候选数（默认 12） |
+| `MATCH_KEYWORD_LIMIT` | 每个关键词 BM25 召回的候选数（默认 60） |
 | `MATCH_GROUP_RECALL_ENABLED` / `MATCH_GROUP_SIZE` | 是否用 Qdrant `group_by=repo_id` 做仓库级召回 / 每仓库保留证据条数（默认 true / 2） |
-| `MATCH_CACHE_VERSION` | 匹配缓存 key 版本，改召回策略后递增以失效旧缓存（默认 v2） |
+| `MATCH_CACHE_VERSION` | 匹配缓存 key 版本，改召回策略后递增以失效旧缓存（默认 v5） |
 | `MATCH_CACHE_TTL_SECONDS` | 匹配结果缓存秒数（默认 600） |
 | `COMPARE_EVIDENCE_TOPK` | 对比每个维度召回的 README / manifest 证据条数（默认 6） |
 | `COMPARE_CACHE_TTL_SECONDS` | 对比结果缓存秒数（默认 7 天，命中不计费） |
 | `COMPARE_CHECKPOINT_TTL_SECONDS` | 断流续跑 checkpoint 秒数（默认 3600） |
 | `COMPARE_TIMEOUT_SECONDS` | 单次对比总超时（默认 240 秒） |
 | `INDEX_MANIFESTS_ENABLED` | worker 是否抓取关键 manifest（package.json / pom.xml 等）并入索引（默认 true） |
+| `README_TRANSLATE_ENABLED` | 非英文 README 入库前是否翻译为英文（默认 true） |
+| `README_TRANSLATE_WINDOW_CHARS` / `README_TRANSLATE_MAX_TOKENS` | 单次翻译窗口字符数 / 输出 token 上限（默认 6000 / 6144） |
+| `README_TRANSLATE_PAGE_SIZE` / `README_TRANSLATE_INTERVAL_MINUTES` | 存量回填每页条数 / 回填间隔分钟（默认 3 / 60） |
 | `OPS_GITHUB_LOGINS` | 可访问 `/ops` 成本看板的 GitHub 登录名，逗号分隔；留空时全部拒绝 |
 | `OPS_DAILY_TOKEN_BUDGET` / `OPS_DAILY_COMPARE_BUDGET` | 日 token / 日对比次数预算（默认 200 万 / 200） |
 | `OPS_P95_CHAT_MS` / `OPS_P95_MATCH_MS` / `OPS_P95_COMPARE_MS` | 分类型 P95 延迟告警阈值（默认 30s / 30s / 180s） |
@@ -403,11 +406,11 @@ GitStarts/
 
 ## 数据与索引
 
-- **MySQL**：`repositories`（仓库主表，含 `category`、`platform` / `platforms`、`latest_release_tag` / `latest_release_at`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `favorites`（收藏与备注，唯一键 `user_id + repo_id`）+ `users` / `conversations` / `messages` / `usage_daily` / `user_profiles` + `ai_metrics`（请求级 token、延迟、结果，供成本看板与告警）。
+- **MySQL**：`repositories`（仓库主表，含 `category`、`platform` / `platforms`、`latest_release_tag` / `latest_release_at`、`readme_sha`、`docs_indexed_at`）+ `tags` / `repo_tags` + `sync_logs` + `repo_documents`（README 与 manifest 原文、sha、ETag、token 数、`lang` 翻译状态，唯一键 `repo_id + kind`）+ `ideas`（用户想法与结构化条件，按 `user_id` 隔离）+ `comparisons`（对比结果 JSON、cacheKey、只读 share token，按 `user_id` 隔离）+ `favorites`（收藏与备注，唯一键 `user_id + repo_id`）+ `users` / `conversations` / `messages` / `usage_daily` / `user_profiles` + `ai_metrics`（请求级 token、延迟、结果，供成本看板与告警）。
 - **Release 与多平台**：每天用 GitHub GraphQL 批量刷新 `latestRelease`（每批 50 个仓库，单次最多 1000 个）；`release_checked_at` 记录检查时间，无 Release 的仓库也记录，避免重复请求。`platforms` 由 topics / 描述 / 语言规则推导，供列表卡展示与匹配条件过滤使用。
 - **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。低内存部署可开启 int8 标量量化：量化向量与 HNSW 图 `pinned` 常驻内存（约 54M + 7M），原始 float32 向量仍落盘，仅用于查询时对 Top-K 候选 rescore（`oversampling=2`），避免 2C2G 上 mmap 反复缺页读盘。
 - **缓存**：匹配结果 10 分钟、对比结果 7 天、对比 checkpoint 1 小时、榜单与元数据 5 分钟；索引 worker 用 Redis 锁 + 游标实现断点续跑。
-- **评测**：`llm-service/tests/eval/dataset.jsonl`（24 条需求）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；`python -m tests.eval.run_eval` / `run_compare_eval` 分别生成匹配与对比报告。
+- **评测**：`llm-service/tests/eval/dataset.jsonl`（21 条需求）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；`python -m tests.eval.run_eval` / `run_compare_eval` 分别生成匹配与对比报告。
 
 ## 安全与合规
 

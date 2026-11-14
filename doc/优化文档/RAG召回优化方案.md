@@ -2,14 +2,15 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 版本 | v2.0（2026-11-13；v1.0 方案的部分设计已被替代，见第 11 节） |
-| 状态 | P0 已实施；召回/排序链路已改造，待用 21 条新数据集复测建立基线 |
+| 版本 | v2.1（2026-11-14；v2.0 的召回链路已按英文单路 + 双路 RRF 更新，见第 12 节） |
+| 状态 | 已上线：英文单路 query 改写、向量 + BM25 双路 RRF、README 翻译归一；待索引稳定后复测调权 |
 | 适用范围 | `llm-service`（match / compare 检索）、`ingest-worker`（索引）、`backend`（仓库检索接口） |
 | 部署约束 | 2C2G / 40G 磁盘；Qdrant 容器内存约 160M；集合约 5 万 points |
 | 设计原则 | 优先确定性流水线；优先复用现有基础设施；每个阶段可独立回滚 |
 
-> 注意：第 4 节中的“过滤放宽阶梯”“RRF 融合”“LLM 重排 ±0.1”属于 v1.0 方案，已在 v2.0 被替代。
-> 实际生效的链路与实测结果以第 11 节为准。
+> 第 4 节中的“过滤放宽阶梯”“RRF 融合”“LLM 重排 ±0.1”属于 v1.0 方案，已在 v2.0 被替代；
+> v2.1 重新引入的双路 RRF 仅作用于“英文向量 + 英文 BM25”两路召回，口径与 v1.0 不同。
+> 当前实际链路与实测结果以第 11、12 节为准。
 
 ---
 
@@ -612,3 +613,69 @@ uv run python -m tests.eval.run_compare_eval
 4. 扩充语料：优先补齐数据集涉及但未入库的仓库，再谈 recall 上限。
 5. P1（chunk 上下文头 / 仓库 profile 向量）暂不执行，等 v2.0 基线出来再判断。
 6. 上线时把 `MATCH_CACHE_VERSION` 从 `v2` 提到 `v3`，失效旧排序缓存。
+
+---
+
+## 12. 当前实现（v2.1，2026-11-14）
+
+### 12.1 最终生效的召回链路
+
+```text
+用户原文
+  → 缓存探测（match:v5:{user}:{digest}）
+  → 需求结构化（search_query / must / should / exclude / keywords）
+  → 英文 query 兜底（缺失或含中文时由模型改写/翻译，绝不回退中文 query）
+  → 英文语义召回：Qdrant 分组召回（group_by=repo_id，limit=60，group_size=2）
+  → 英文关键词召回：backend RepoBm25Index（name / topics / description，每词最多 60）
+  → 双路加权 RRF（向量 0.5 + 关键词 0.5，k=60）→ 只保留前 60
+  → 交叉编码 rerank（bge-reranker-v2-m3，semantic 取原始分）
+  → semantic 主排序，fit 次级排序
+  → topK + 缓存 + match_recall_stats
+```
+
+### 12.2 与 v2.0 的差异
+
+| 项 | v2.0 | v2.1 实际实现 |
+| --- | --- | --- |
+| Query | 中英双语 2–3 条短 query | 英文单路；中文提问先改写/翻译为英文 |
+| 召回 | 中文语义 + 英文语义 + 关键词 | 英文向量 + 英文 BM25 两路 |
+| 融合 | 通道内线性衰减，取消 RRF | 双路加权 RRF，各 0.5，`k=60` |
+| rerank 候选 | 全池 | RRF 前 60 |
+| 关键词检索 | backend SQL LIKE + topics | `RepoBm25Index`（BM25，5 分钟快照） |
+| README 入库 | 原文直接入库 | 非英文 README 先翻译为英文，`repo_documents.lang` 标记 0/1/2 |
+| 缓存版本 | `v2` | `v5` |
+
+### 12.3 实测结果（Provisional）
+
+条件：21 条冻结需求、`limit=10`、关闭匹配缓存、`MATCH_RECALL_LIMIT=60`、LLM-as-Judge。
+评测期间全量索引重建与 README 翻译回填仍在进行，结果仅作阶段性参考。
+
+| 指标 | RRF 50/50 + Top60 | 历史 no-RRF 参考 |
+| --- | --- | --- |
+| 至少 1 个相关（match） | 17 / 21 | 18 / 21 |
+| 平均严谨相关率@10 | 0.143 | 0.152 |
+| 平均首个相关排名（MRR） | 0.506 | 0.621 |
+| 平均 recall@10 | 0.317 | 0.444 |
+| 候选池 recall（池=60） | 0.579 | 0.762（旧池更大） |
+
+报告与数据：`doc/eval/judge-report-rrf60.md`、`pool-rrf60.jsonl`、`judge-cache-rrf60.json`。
+
+### 12.4 变更文件
+
+| 模块 | 文件 |
+| --- | --- |
+| 召回与 RRF | `llm-service/app/graphs/match_graph.py` |
+| Query 清洗 | `llm-service/app/services/query_terms.py` |
+| 契约 | `llm-service/app/schemas/match.py`（移除 `search_query_zh`） |
+| 配置 | `llm-service/app/core/config.py`（`match_cache_version=v5`） |
+| README 翻译 | `llm-service/worker/lang_detect.py`、`worker/translate.py`、`worker/pipeline.py` |
+| 关键词检索 | `backend/src/main/java/com/githubstars/service/RepoBm25Index.java`、`RepoService.java` |
+| 文档字段 | `deploy/init.sql`（`repo_documents.lang` / `lang_checked_at`） |
+| 评测 | `llm-service/tests/eval/run_eval.py`、`judge-report-rrf60.md` |
+
+### 12.5 质量门禁
+
+- `ruff check` 通过
+- `pytest` 84 passed
+- `mvn -q package` 通过
+- 服务器一次性容器评测通过，常驻容器未因评测重启

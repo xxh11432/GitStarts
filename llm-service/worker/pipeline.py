@@ -11,15 +11,20 @@ from app.clients.backend import BackendClient, BackendError
 from app.clients.redis import CacheClient
 from app.clients.vector import VectorStore
 from app.core.config import Settings
+from worker.chunk import estimate_tokens
 from worker.embed import EmbeddingCache
 from worker.fetch_docs import GithubFetchError, ReadmeFetcher
 from worker.index import index_readme
+from worker.lang_detect import needs_translation
+from worker.translate import ReadmeTranslator, TranslationError
 
 logger = structlog.get_logger("pipeline")
 
 CURSOR_KEY = "index:cursor"
 FULL_CURSOR_KEY = "index:full_cursor"
 LOCK_KEY = "index:lock"
+TRANSLATE_LOCK_KEY = "index:translate:lock"
+TRANSLATE_LOCK_TTL_SECONDS = 6 * 60 * 60
 INITIALIZED_KEY = "index:initialized"
 LOCK_TTL_SECONDS = 4 * 60 * 60
 MANIFEST_MARKER_TTL_SECONDS = 90 * 24 * 3600
@@ -62,6 +67,20 @@ def _needs_index(item: dict[str, Any]) -> bool:
     return str(pushed_at) > str(indexed_at)
 
 
+@dataclass
+class TranslateStats:
+    checked: int = 0
+    translated: int = 0
+    failed: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "checked": self.checked,
+            "translated": self.translated,
+            "failed": self.failed,
+        }
+
+
 async def run_index_pass(
     settings: Settings,
     *,
@@ -70,6 +89,7 @@ async def run_index_pass(
     embedding: EmbeddingCache,
     vector: VectorStore,
     cache: CacheClient,
+    translator: ReadmeTranslator | None = None,
     full: bool = False,
 ) -> IndexStats:
     stats = IndexStats()
@@ -124,6 +144,7 @@ async def run_index_pass(
                         vector=vector,
                         cache=cache,
                         item=item,
+                        translator=translator,
                         full=full or not item.get("docsIndexedAt"),
                         index_readme_docs=needs_readme,
                         index_manifest=needs_manifest,
@@ -179,6 +200,7 @@ async def _index_item(
     index_readme_docs: bool = True,
     index_manifest: bool = False,
     manifest_key: str = "",
+    translator: ReadmeTranslator | None = None,
 ) -> str:
     repo_id = int(item["repoId"])
     full_name = str(item["fullName"])
@@ -203,23 +225,48 @@ async def _index_item(
                 etag=readme.etag,
                 content="",
                 token_count=0,
+                lang=0,
             )
         else:
+            # 入库前统一语言治理：非英文（含混排）先翻译成英文，sha 始终保留 GitHub 原始值
+            content = readme.content
+            lang = 0
+            should_translate = (
+                translator is not None
+                and settings.readme_translate_enabled
+                and needs_translation(content)
+            )
+            if should_translate:
+                try:
+                    content = await translator.translate(content)
+                    lang = 1
+                    logger.info(
+                        "readme_translated",
+                        repo=full_name,
+                        source_chars=len(readme.content),
+                        chars=len(content),
+                    )
+                except TranslationError as exc:
+                    lang = 2
+                    logger.warning(
+                        "readme_translate_failed", repo=full_name, detail=str(exc)[:200]
+                    )
             await backend.upsert_repo_document(
                 repo_id=repo_id,
                 kind="readme",
                 source_url=readme.source_url,
                 sha=readme.sha,
                 etag=readme.etag,
-                content=readme.content,
-                token_count=readme.token_count,
+                content=content,
+                token_count=estimate_tokens(content),
+                lang=lang,
             )
             await index_readme(
                 settings,
                 vector,
                 embedding,
                 repo=repo,
-                content=readme.content,
+                content=content,
                 sha=readme.sha,
                 source_url=readme.source_url,
             )
@@ -257,6 +304,146 @@ async def _index_item(
             await cache.set_text(manifest_key, "1", MANIFEST_MARKER_TTL_SECONDS)
 
     return "indexed" if changed else "skipped"
+
+
+async def run_translation_backfill(
+    settings: Settings,
+    *,
+    backend: BackendClient,
+    embedding: EmbeddingCache,
+    vector: VectorStore,
+    cache: CacheClient,
+    translator: ReadmeTranslator,
+) -> TranslateStats:
+    """存量回填：把未检测 / 翻译失败的 README 逐条检测并翻译，成功后重灌该 repo 的向量。"""
+    stats = TranslateStats()
+    if not settings.readme_translate_enabled:
+        return stats
+    if not await cache.acquire_lock(TRANSLATE_LOCK_KEY, TRANSLATE_LOCK_TTL_SECONDS):
+        logger.warning("translate_locked")
+        return stats
+    try:
+        cursor = 0
+        while True:
+            page = await backend.list_pending_docs(
+                cursor=cursor, limit=settings.readme_translate_page_size
+            )
+            items = page.get("items") or []
+            if not items:
+                break
+            for item in items:
+                try:
+                    await _translate_pending_doc(
+                        settings,
+                        backend=backend,
+                        embedding=embedding,
+                        vector=vector,
+                        translator=translator,
+                        item=item,
+                        stats=stats,
+                    )
+                except Exception as exc:  # 单条失败不阻断整轮回填
+                    stats.failed += 1
+                    logger.warning(
+                        "translate_backfill_crashed",
+                        repo=item.get("fullName"),
+                        error=type(exc).__name__,
+                    )
+            next_cursor = page.get("nextCursor")
+            if next_cursor is None:
+                break
+            cursor = int(next_cursor)
+        logger.info("translate_pass_finished", **stats.as_dict())
+        return stats
+    finally:
+        await cache.release_lock(TRANSLATE_LOCK_KEY)
+
+
+async def _translate_pending_doc(
+    settings: Settings,
+    *,
+    backend: BackendClient,
+    embedding: EmbeddingCache,
+    vector: VectorStore,
+    translator: ReadmeTranslator,
+    item: dict[str, Any],
+    stats: TranslateStats,
+) -> None:
+    repo_id = int(item.get("repoId") or 0)
+    full_name = str(item.get("fullName") or "")
+    content = str(item.get("content") or "")
+    if not repo_id or not full_name or not content:
+        return
+    source_url = item.get("sourceUrl")
+    sha = item.get("sha")
+    etag = item.get("etag")
+
+    if not needs_translation(content):
+        await backend.upsert_repo_document(
+            repo_id=repo_id,
+            kind="readme",
+            source_url=source_url,
+            sha=sha,
+            etag=etag,
+            content=content,
+            token_count=int(item.get("tokenCount") or 0) or estimate_tokens(content),
+            lang=0,
+        )
+        stats.checked += 1
+        return
+
+    try:
+        translated = await translator.translate(content)
+    except TranslationError as exc:
+        await backend.upsert_repo_document(
+            repo_id=repo_id,
+            kind="readme",
+            source_url=source_url,
+            sha=sha,
+            etag=etag,
+            content=content,
+            token_count=int(item.get("tokenCount") or 0) or estimate_tokens(content),
+            lang=2,
+        )
+        stats.failed += 1
+        logger.warning("translate_backfill_failed", repo=full_name, detail=str(exc)[:200])
+        return
+
+    # 先重灌向量再回写状态：索引失败时文档仍处于待检测，下轮自动重试
+    await index_readme(
+        settings,
+        vector,
+        embedding,
+        repo=_pending_repo(item),
+        content=translated,
+        sha=sha,
+        source_url=source_url,
+    )
+    await backend.upsert_repo_document(
+        repo_id=repo_id,
+        kind="readme",
+        source_url=source_url,
+        sha=sha,
+        etag=etag,
+        content=translated,
+        token_count=estimate_tokens(translated),
+        lang=1,
+    )
+    stats.translated += 1
+    logger.info("translate_backfill_done", repo=full_name, chars=len(translated))
+
+
+def _pending_repo(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "repoId": item.get("repoId"),
+        "fullName": item.get("fullName"),
+        "pushedAt": item.get("pushedAt"),
+        "language": item.get("language"),
+        "category": item.get("category"),
+        "license": item.get("license"),
+        "platform": item.get("platform"),
+        "stars": item.get("stars"),
+    }
 
 
 def _manifest_key(settings: Settings, item: dict[str, Any]) -> str:

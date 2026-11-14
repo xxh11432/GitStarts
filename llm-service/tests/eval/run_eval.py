@@ -32,7 +32,7 @@ from app.clients.redis import CacheClient
 from app.clients.rerank import RerankClient
 from app.clients.vector import VectorStore
 from app.core.config import get_settings
-from app.graphs.match_graph import MatchRunner
+from app.graphs.match_graph import MatchRunner, parse_requirement
 from app.schemas.match import MatchRequest
 from app.services.embedding import get_embedding_service
 from tests.eval.judge import (
@@ -68,6 +68,7 @@ class EvalResult:
     pool_recall: float = 0.0
     judgement: CaseJudgement | None = None
     judge_ms: int = 0
+    pool_names: list[str] | None = None
 
 
 def load_dataset(path: Path) -> list[EvalCase]:
@@ -94,12 +95,51 @@ def load_dataset(path: Path) -> list[EvalCase]:
     return cases
 
 
+def load_structured(path: Path) -> dict[str, dict[str, Any]]:
+    """读取冻结的结构化需求，控制变量对比多组召回参数。"""
+    mapping: dict[str, dict[str, Any]] = {}
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            raw = json.loads(line)
+            mapping[str(raw["id"])] = dict(raw["requirement"])
+    if not mapping:
+        raise SystemExit(f"结构化需求文件为空：{path}")
+    return mapping
+
+
+async def dump_requirements(dataset: Path, out: Path, settings: Any) -> None:
+    """每条用例只解析一次并落盘，供多轮参数对比复用同一份结构化需求。"""
+    cases = load_dataset(dataset)
+    llm = build_chat_model(settings)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as handle:
+        for index, case in enumerate(cases, start=1):
+            try:
+                payload = (await parse_requirement(llm, case.text)).model_dump()
+            except Exception as exc:  # noqa: BLE001 - 单条失败降级，保证文件完整
+                payload = {
+                    "goal": case.text[:200],
+                    "degraded": True,
+                    "notes": [f"解析失败：{type(exc).__name__}"],
+                }
+            handle.write(
+                json.dumps({"id": case.case_id, "requirement": payload}, ensure_ascii=False)
+                + "\n"
+            )
+            print(f"[{index}/{len(cases)}] {case.case_id} parsed")
+    print(f"requirements written to {out}")
+
+
 async def evaluate(
     case: EvalCase,
     limit: int,
     *,
     use_cache: bool = True,
     judge: RelevanceJudge | None = None,
+    structured: dict[str, Any] | None = None,
 ) -> EvalResult:
     settings = get_settings()
     backend = BackendClient(settings)
@@ -121,7 +161,9 @@ async def evaluate(
     requirement: dict[str, Any] | None = None
     error: str | None = None
     try:
-        async for event in runner.run(MatchRequest(raw_text=case.text, limit=limit), user_id=0):
+        async for event in runner.run(
+            MatchRequest(raw_text=case.text, structured=structured, limit=limit), user_id=0
+        ):
             if event.name == "candidate":
                 names.append(str(event.data["repo"]["fullName"]))
                 candidates.append(dict(event.data))
@@ -173,6 +215,7 @@ async def evaluate(
         pool_recall=len(pool_hits) / len(expected) if expected else 0.0,
         judgement=judgement,
         judge_ms=judge_ms,
+        pool_names=list((runner.recall_stats or {}).get("pool_names") or []),
     )
 
 
@@ -184,8 +227,13 @@ async def run(
     *,
     use_cache: bool = True,
     judge: RelevanceJudge | None = None,
+    structured_by_id: dict[str, dict[str, Any]] | None = None,
+    case_ids: set[str] | None = None,
+    dump_pool: Path | None = None,
 ) -> None:
     cases = load_dataset(dataset)
+    if case_ids:
+        cases = [case for case in cases if case.case_id in case_ids]
     if max_cases:
         cases = cases[:max_cases]
 
@@ -193,7 +241,13 @@ async def run(
     results: list[EvalResult] = []
     for index, case in enumerate(cases, start=1):
         print(f"[{index}/{len(cases)}] {case.case_id}: {case.text[:60]}")
-        result = await evaluate(case, limit, use_cache=use_cache, judge=judge)
+        result = await evaluate(
+            case,
+            limit,
+            use_cache=use_cache,
+            judge=judge,
+            structured=(structured_by_id or {}).get(case.case_id),
+        )
         results.append(result)
         status = "ERROR" if result.error else f"recall={result.recall:.2f}"
         stats = summarize(
@@ -210,6 +264,24 @@ async def run(
         render_report(results, limit, settings, dataset),
         encoding="utf-8",
     )
+    if dump_pool is not None:
+        dump_pool.parent.mkdir(parents=True, exist_ok=True)
+        with dump_pool.open("w", encoding="utf-8") as handle:
+            for result in results:
+                handle.write(
+                    json.dumps(
+                        {
+                            "id": result.case.case_id,
+                            "retrieved": result.retrieved,
+                            "pool": result.pool_names or [],
+                            "pool_size": len(result.pool_names or []),
+                            "error": result.error,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        print(f"pool dump written to {dump_pool}")
     print(f"report written to {report}")
 
 
@@ -277,6 +349,7 @@ def render_report(results: list[EvalResult], limit: int, settings: Any, dataset:
         f"- 数据集：`{dataset}`（{len(results)} 条）",
         f"- 模型：`{settings.llm_chat_model}`；embedding：`{settings.llm_embedding_model}`"
         f"（{settings.embedding_provider}，{settings.llm_embedding_dim} 维）",
+        f"- rerank：`{settings.rerank_model}`（双路 RRF 融合取前 60 后精排）",
         "- 主口径：LLM-as-Judge，判断候选是否满足用户需求"
         "（match / partial / mismatch，prompt 版本 v1）",
         f"- 参考口径：标注 fullName 精确匹配（recall@{limit} / MRR@{limit}）",
@@ -434,9 +507,36 @@ def main() -> None:
         default=WORKER_DIR / "tests" / "eval" / ".judge-cache.json",
         help="相关性判定缓存文件，按请求内容哈希复用",
     )
+    parser.add_argument(
+        "--structured-file",
+        type=Path,
+        default=None,
+        help="冻结的结构化需求 JSONL；指定后跳过需求解析，用于参数对比",
+    )
+    parser.add_argument(
+        "--dump-requirements",
+        type=Path,
+        default=None,
+        help="只解析数据集并导出结构化需求 JSONL 后退出",
+    )
+    parser.add_argument(
+        "--case-ids",
+        default="",
+        help="只跑指定用例，逗号分隔（用于单点诊断）",
+    )
+    parser.add_argument(
+        "--dump-pool",
+        type=Path,
+        default=None,
+        help="导出每条用例的完整候选池与最终 topN，用于区分召回与排序问题",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
+    if args.dump_requirements:
+        asyncio.run(dump_requirements(args.dataset, args.dump_requirements, settings))
+        return
+
     judge = None
     if not args.no_judge:
         judge = RelevanceJudge(
@@ -453,6 +553,12 @@ def main() -> None:
                 args.max_cases,
                 use_cache=not args.no_cache,
                 judge=judge,
+                structured_by_id=(
+                    load_structured(args.structured_file) if args.structured_file else None
+                ),
+                case_ids={item.strip() for item in args.case_ids.split(",") if item.strip()}
+                or None,
+                dump_pool=args.dump_pool,
             )
         )
     except KeyboardInterrupt:

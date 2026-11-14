@@ -141,9 +141,36 @@ CREATE TABLE IF NOT EXISTS repo_documents (
     etag        VARCHAR(128) COMMENT '条件请求用',
     content     MEDIUMTEXT,
     token_count INT,
+    -- README 语言状态：0=英文原文（无需翻译），1=已翻译，2=翻译失败
+    lang        TINYINT NOT NULL DEFAULT 0,
+    -- 最近一次语言检测时间；NULL 表示存量数据尚未检测（由 worker 回填）
+    lang_checked_at DATETIME,
     fetched_at  DATETIME,
     UNIQUE KEY uk_repo_kind (repo_id, kind)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 升级既有库：为 repo_documents 补齐 lang / lang_checked_at（MySQL 8.0 不支持 ADD COLUMN IF NOT EXISTS）
+SET @ddl := (
+    SELECT IF(COUNT(*) = 0,
+        'ALTER TABLE repo_documents ADD COLUMN lang TINYINT NOT NULL DEFAULT 0 COMMENT ''0=英文原文 1=已翻译 2=翻译失败'' AFTER token_count',
+        'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'repo_documents' AND COLUMN_NAME = 'lang'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @ddl := (
+    SELECT IF(COUNT(*) = 0,
+        'ALTER TABLE repo_documents ADD COLUMN lang_checked_at DATETIME COMMENT ''最近一次语言检测时间'' AFTER lang',
+        'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'repo_documents' AND COLUMN_NAME = 'lang_checked_at'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 深度对比（M5）：结果由 llm-service 生成，backend 只负责落库与分享
 CREATE TABLE IF NOT EXISTS comparisons (

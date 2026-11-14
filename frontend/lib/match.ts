@@ -15,8 +15,10 @@ export interface Requirement {
   goal: string;
   domain?: string | null;
   audience?: string | null;
-  /** 一句检索式：保留产品名/技术名/英文关键词，最长 80 字 */
+  /** 英文检索式：用户提问经模型改写为英文，仅用于英文召回 */
   searchQuery?: string;
+  /** 原词 → 规范术语的归一化记录 */
+  normalizedTerms?: string[];
   must: MatchCondition[];
   should: MatchCondition[];
   exclude: string[];

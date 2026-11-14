@@ -9,6 +9,7 @@ import com.githubstars.dto.IdeaUpdateRequest;
 import com.githubstars.dto.IndexMarkRequest;
 import com.githubstars.dto.IndexRepoPage;
 import com.githubstars.dto.MessageCreateRequest;
+import com.githubstars.dto.PendingDocPage;
 import com.githubstars.dto.QuotaCommitRequest;
 import com.githubstars.dto.QuotaReleaseRequest;
 import com.githubstars.dto.QuotaReserveRequest;
@@ -173,6 +174,15 @@ public class InternalController {
     @PostMapping("/repo-documents")
     public Map<String, Object> upsertDocument(@RequestBody RepoDocumentUpsertRequest request) {
         return Map.of("id", documentService.upsert(request));
+    }
+
+    /**
+     * 索引 worker：分页拉取待语言检测 / 翻译失败的 README（存量回填）。
+     */
+    @GetMapping("/repo-documents/pending")
+    public PendingDocPage pendingDocuments(@RequestParam(required = false) Long cursor,
+                                           @RequestParam(defaultValue = "10") int limit) {
+        return documentService.listPendingLangDocs(cursor, limit);
     }
 
     /**

@@ -25,8 +25,10 @@ class Requirement(CamelModel):
     goal: str = Field(default="", max_length=500)
     domain: str | None = Field(default=None, max_length=100)
     audience: str | None = Field(default=None, max_length=100)
-    # 一句检索式：只保留产品名、技术名与英文关键词，避免把整段原文塞进 query。
-    search_query: str = Field(default="", max_length=80)
+    # 一条英文检索式：即使用户用中文提问，也必须改写为英文后仅走英文召回。
+    search_query: str = Field(default="", max_length=120)
+    # 原词 → 规范术语的归一化记录，供审计与关键词扩展。
+    normalized_terms: list[str] = Field(default_factory=list, max_length=10)
     must: list[Condition] = Field(default_factory=list, max_length=10)
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)
@@ -41,7 +43,8 @@ class LlmRequirement(CamelModel):
     goal: str = Field(default="", max_length=500)
     domain: str | None = Field(default=None, max_length=100)
     audience: str | None = Field(default=None, max_length=100)
-    search_query: str = Field(default="", max_length=80)
+    search_query: str = Field(default="", max_length=120)
+    normalized_terms: list[str] = Field(default_factory=list, max_length=10)
     must: list[Condition] = Field(default_factory=list, max_length=10)
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)

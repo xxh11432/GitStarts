@@ -23,6 +23,8 @@ import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -42,10 +44,12 @@ public class RepoService {
     private final CacheService cacheService;
     private final GithubClient githubClient;
     private final ReadmeSummarizer readmeSummarizer;
+    private final RepoBm25Index bm25Index;
 
     public RepoService(RepositoryMapper repositoryMapper, TagMapper tagMapper, RepoTagMapper repoTagMapper,
                        RepoAssembler assembler, Categorizer categorizer, CacheService cacheService,
-                       GithubClient githubClient, ReadmeSummarizer readmeSummarizer) {
+                       GithubClient githubClient, ReadmeSummarizer readmeSummarizer,
+                       RepoBm25Index bm25Index) {
         this.repositoryMapper = repositoryMapper;
         this.tagMapper = tagMapper;
         this.repoTagMapper = repoTagMapper;
@@ -54,6 +58,7 @@ public class RepoService {
         this.cacheService = cacheService;
         this.githubClient = githubClient;
         this.readmeSummarizer = readmeSummarizer;
+        this.bm25Index = bm25Index;
     }
 
     public RepoResponse getRepo(String fullName) {
@@ -156,45 +161,24 @@ public class RepoService {
     }
 
     /**
-     * AI 工具调用专用检索：关键字 + 硬条件，返回精简列表（无分页）。
+     * AI 工具调用专用检索：BM25 关键词召回 + 硬条件过滤，返回精简列表（无分页）。
      */
     public List<RepoResponse> searchForAi(String q, String language, String category, String license,
                                           String platform, Integer minStars, String sort, int limit) {
-        int effectiveLimit = Math.min(Math.max(limit, 1), 20);
-        LambdaQueryWrapper<Repository> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Repository::getArchived, 0).eq(Repository::getDisabled, 0);
-
-        if (q != null && !q.isBlank()) {
-            String raw = q.trim();
-            // topics 是 JSON 列，只作为召回补充：截断到 24 字，避免长句 LIKE 全表扫描
-            String like = raw.length() > 24 ? raw.substring(0, 24) : raw;
-            wrapper.and(w -> w.like(Repository::getFullName, like)
-                    .or().like(Repository::getName, like)
-                    .or().like(Repository::getDescription, like)
-                    .or().like(Repository::getTopics, like));
+        int effectiveLimit = Math.min(Math.max(limit, 1), 60);
+        String resolvedLanguage = (language == null || language.isBlank())
+                ? null
+                : resolveLanguage(language);
+        List<Long> ids = bm25Index.search(q, resolvedLanguage, category, license, platform,
+                minStars, effectiveLimit);
+        if (ids.isEmpty()) {
+            return List.of();
         }
-        if (language != null && !language.isBlank()) {
-            wrapper.eq(Repository::getLanguage, resolveLanguage(language));
-        }
-        if (category != null && !category.isBlank()) {
-            wrapper.eq(Repository::getCategory, category.trim());
-        }
-        if (license != null && !license.isBlank()) {
-            wrapper.eq(Repository::getLicense, license.trim());
-        }
-        if (platform != null && !platform.isBlank()) {
-            wrapper.eq(Repository::getPlatform, platform.trim().toLowerCase());
-        }
-        if (minStars != null && minStars > 0) {
-            wrapper.ge(Repository::getStars, minStars);
-        }
-
-        wrapper.orderByDesc("pushedAt".equalsIgnoreCase(sort)
-                ? Repository::getPushedAt
-                : Repository::getStars);
-        wrapper.last("LIMIT " + effectiveLimit);
-
-        return repositoryMapper.selectList(wrapper).stream()
+        Map<Long, Repository> byId = repositoryMapper.selectBatchIds(ids).stream()
+                .collect(Collectors.toMap(Repository::getId, repo -> repo, (left, right) -> left));
+        return ids.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
                 .map(assembler::toResponse)
                 .collect(Collectors.toList());
     }

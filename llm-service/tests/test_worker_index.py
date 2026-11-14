@@ -7,6 +7,7 @@ from app.core.config import Settings
 from worker.chunk import chunk_markdown
 from worker.index import build_points, index_readme
 from worker.pipeline import FULL_CURSOR_KEY, run_index_pass
+from worker.translate import TranslationError
 
 
 class FakeVector:
@@ -123,6 +124,7 @@ class FakeIndexBackend:
     def __init__(self, pages: dict[int, list[dict[str, Any]]]) -> None:
         self.pages = pages
         self.cursors: list[int | None] = []
+        self.upserts: list[dict[str, Any]] = []
 
     async def list_index_repos(self, *, cursor: int | None = None, limit: int = 100) -> Any:
         self.cursors.append(cursor)
@@ -133,6 +135,7 @@ class FakeIndexBackend:
         return None
 
     async def upsert_repo_document(self, **kwargs: Any) -> int:
+        self.upserts.append(kwargs)
         return 1
 
 
@@ -150,6 +153,90 @@ class FakeFetcher:
             source_url="https://github.com/o/r/blob/main/requirements.txt",
             token_count=4,
         )
+
+
+class FakeReadmeFetcher:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+    async def fetch_readme(self, full_name: str, etag: str | None = None) -> Any:
+        return SimpleNamespace(
+            unchanged=False,
+            content=self.content,
+            sha="sha1",
+            etag="etag1",
+            source_url="https://github.com/owner/repo",
+            token_count=1,
+        )
+
+    async def fetch_manifest(self, full_name: str, *, language: str | None) -> Any:
+        return None
+
+
+class FakeTranslator:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def translate(self, content: str) -> str:
+        self.calls += 1
+        return "## Project\n\nTranslated English README.\n\nEnglish text. " * 40
+
+
+class FailingTranslator:
+    async def translate(self, content: str) -> str:
+        raise TranslationError("upstream error")
+
+
+async def test_readme_translated_before_upsert_and_index(settings: Settings) -> None:
+    chinese = "# 项目\n\n" + "这是一个中文说明，介绍安装与配置步骤。\n\n" * 20
+    backend = FakeIndexBackend({0: [{"repoId": 5, "fullName": "owner/cn"}]})
+    vector = FakeVector()
+    translator = FakeTranslator()
+
+    stats = await run_index_pass(
+        settings,
+        backend=backend,  # type: ignore[arg-type]
+        fetcher=FakeReadmeFetcher(chinese),  # type: ignore[arg-type]
+        embedding=FakeEmbedding(),  # type: ignore[arg-type]
+        vector=vector,  # type: ignore[arg-type]
+        cache=FakeCache(),  # type: ignore[arg-type]
+        translator=translator,  # type: ignore[arg-type]
+        full=True,
+    )
+
+    assert stats.indexed == 1
+    assert translator.calls == 1
+    readme = [upsert for upsert in backend.upserts if upsert.get("kind") == "readme"][-1]
+    assert readme["lang"] == 1
+    assert "Translated English README" in readme["content"]
+    assert any(
+        "Translated English README" in str(point.payload.get("content"))
+        for point in vector.upserted
+    )
+
+
+async def test_translation_failure_keeps_original_and_marks_failed(settings: Settings) -> None:
+    chinese = "# 项目\n\n" + "这是一个中文说明，介绍安装与配置步骤。\n\n" * 20
+    backend = FakeIndexBackend({0: [{"repoId": 6, "fullName": "owner/cn2"}]})
+    vector = FakeVector()
+
+    await run_index_pass(
+        settings,
+        backend=backend,  # type: ignore[arg-type]
+        fetcher=FakeReadmeFetcher(chinese),  # type: ignore[arg-type]
+        embedding=FakeEmbedding(),  # type: ignore[arg-type]
+        vector=vector,  # type: ignore[arg-type]
+        cache=FakeCache(),  # type: ignore[arg-type]
+        translator=FailingTranslator(),  # type: ignore[arg-type]
+        full=True,
+    )
+
+    readme = [upsert for upsert in backend.upserts if upsert.get("kind") == "readme"][-1]
+    assert readme["lang"] == 2
+    assert readme["content"] == chinese
+    assert any(
+        "这是一个中文说明" in str(point.payload.get("content")) for point in vector.upserted
+    )
 
 
 async def test_full_pass_resumes_from_cursor(settings: Settings) -> None:

@@ -43,8 +43,6 @@ class Settings(BaseSettings):
     rerank_api_key: str = ""  # 空则回落到 EMBEDDING_API_KEY
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
     rerank_batch_size: int = 32
-    # 融合权重：0.6 × rerank + 0.4 × RRF；设为 0 等价于关闭融合
-    rerank_weight: float = 0.6
     rerank_timeout_seconds: float = 20.0
 
     # Infrastructure
@@ -104,18 +102,28 @@ class Settings(BaseSettings):
     index_full_rebuild: bool = False
     index_manifests_enabled: bool = True
 
+    # README 语言治理：入库前检测语言，非英文（含中英混排）翻译为英文后再落库/入索引
+    readme_translate_enabled: bool = True
+    # 单次送给模型的字符上限：过大容易被截断，过小会放大请求数
+    readme_translate_window_chars: int = 6000
+    readme_translate_max_tokens: int = 6144
+    readme_translate_timeout_seconds: float = 60.0
+    readme_translate_max_retries: int = 1
+    # 存量回填每页条数与执行间隔；backend 内存余量有限，单页不宜过大
+    readme_translate_page_size: int = 3
+    readme_translate_interval_minutes: int = 60
+    # 翻译结果长度上限（backend 单文档上限 2,000,000 字符）
+    readme_translate_max_output_chars: int = 1_950_000
+
     # Match (M4)
     match_limit_default: int = 6
     match_recall_limit: int = 60
-    match_keyword_limit: int = 12
+    match_keyword_limit: int = 60
     match_cache_ttl_seconds: int = 600
     # 分组召回：limit 表示仓库数；关闭后回退到 chunk 召回 + 应用层聚合
     match_group_recall_enabled: bool = True
     match_group_size: int = 2
-    # RRF 通道内线性衰减：score = max(0, 1 - decay × (rank - 1))
-    match_rrf_decay: float = 0.02
-    match_query_max: int = 3
-    match_cache_version: str = "v2"
+    match_cache_version: str = "v5"
 
     # Compare (M5)
     compare_schema_version: str = "v1"

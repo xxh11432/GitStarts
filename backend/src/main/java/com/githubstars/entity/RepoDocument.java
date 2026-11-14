@@ -18,6 +18,8 @@ public class RepoDocument {
     private String etag;
     private String content;
     private Integer tokenCount;
+    private Integer lang;
+    private LocalDateTime langCheckedAt;
     private LocalDateTime fetchedAt;
 
     public Long getId() {
@@ -82,6 +84,22 @@ public class RepoDocument {
 
     public void setTokenCount(Integer tokenCount) {
         this.tokenCount = tokenCount;
+    }
+
+    public Integer getLang() {
+        return lang;
+    }
+
+    public void setLang(Integer lang) {
+        this.lang = lang;
+    }
+
+    public LocalDateTime getLangCheckedAt() {
+        return langCheckedAt;
+    }
+
+    public void setLangCheckedAt(LocalDateTime langCheckedAt) {
+        this.langCheckedAt = langCheckedAt;
     }
 
     public LocalDateTime getFetchedAt() {
