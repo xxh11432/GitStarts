@@ -312,6 +312,18 @@ class BackendClient:
         )
         return int(body["id"])
 
+    async def get_repo_readme(self, repo_id: int) -> dict[str, Any]:
+        """读取已存 README（服务端截断到 8000 字符），供摘要回填使用。"""
+        return await self._request("GET", f"/internal/repo-documents/{repo_id}")
+
+    async def update_repo_summary(self, repo_id: int, summary: str) -> None:
+        """回写仓库档案摘要（≤500 字符），供 match 的 rerank 文档使用。"""
+        await self._request(
+            "POST",
+            f"/internal/repos/{repo_id}/summary",
+            json_body={"summary": summary},
+        )
+
     async def list_pending_docs(
         self, *, cursor: int | None = None, limit: int = 10
     ) -> dict[str, Any]:

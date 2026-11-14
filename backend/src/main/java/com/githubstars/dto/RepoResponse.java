@@ -25,5 +25,6 @@ public record RepoResponse(
         LocalDateTime latestReleaseAt,
         String defaultBranch,
         LocalDateTime pushedAt,
-        LocalDateTime createdAt) {
+        LocalDateTime createdAt,
+        String repoSummary) {
 }

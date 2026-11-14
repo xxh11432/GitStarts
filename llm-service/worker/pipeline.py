@@ -16,6 +16,7 @@ from worker.embed import EmbeddingCache
 from worker.fetch_docs import GithubFetchError, ReadmeFetcher
 from worker.index import index_readme
 from worker.lang_detect import needs_translation
+from worker.summarize import RepoSummarizer, SummaryError, build_metadata, fallback_summary
 from worker.translate import ReadmeTranslator, TranslationError
 
 logger = structlog.get_logger("pipeline")
@@ -90,6 +91,7 @@ async def run_index_pass(
     vector: VectorStore,
     cache: CacheClient,
     translator: ReadmeTranslator | None = None,
+    summarizer: RepoSummarizer | None = None,
     full: bool = False,
 ) -> IndexStats:
     stats = IndexStats()
@@ -130,7 +132,9 @@ async def run_index_pass(
                 needs_manifest = settings.index_manifests_enabled and not await cache.get_text(
                     manifest_key
                 )
-                if not needs_readme and not needs_manifest:
+                # 摘要缺失时即使 README 未变也要补：rerank 文档依赖它
+                needs_summary = summarizer is not None and not item.get("repoSummary")
+                if not needs_readme and not needs_manifest and not needs_summary:
                     stats.skipped += 1
                     await cache.set_text(cursor_key, str(repo_id))
                     continue
@@ -145,9 +149,11 @@ async def run_index_pass(
                         cache=cache,
                         item=item,
                         translator=translator,
+                        summarizer=summarizer,
                         full=full or not item.get("docsIndexedAt"),
                         index_readme_docs=needs_readme,
                         index_manifest=needs_manifest,
+                        index_summary=needs_summary or needs_readme,
                         manifest_key=manifest_key,
                     )
                     if outcome == "indexed":
@@ -201,11 +207,14 @@ async def _index_item(
     index_manifest: bool = False,
     manifest_key: str = "",
     translator: ReadmeTranslator | None = None,
+    summarizer: RepoSummarizer | None = None,
+    index_summary: bool = False,
 ) -> str:
     repo_id = int(item["repoId"])
     full_name = str(item["fullName"])
     repo = _repo_payload(item)
     changed = False
+    readme_content = ""
 
     if index_readme_docs:
         etag = None if full else item.get("readmeEtag")
@@ -261,6 +270,18 @@ async def _index_item(
                 token_count=estimate_tokens(content),
                 lang=lang,
             )
+            readme_content = content
+            changed = True
+            # 写文档后立即生成摘要，再进入切块与向量化
+            if summarizer is not None and index_summary:
+                await _refresh_summary(
+                    backend=backend,
+                    summarizer=summarizer,
+                    item=item,
+                    repo_id=repo_id,
+                    full_name=full_name,
+                    readme_content=readme_content,
+                )
             await index_readme(
                 settings,
                 vector,
@@ -270,7 +291,18 @@ async def _index_item(
                 sha=readme.sha,
                 source_url=readme.source_url,
             )
-            changed = True
+
+    # 没有新抓到的 README（未变 / 缺失 / 存量回填）时，从文档库取正文补摘要
+    if summarizer is not None and index_summary and not readme_content:
+        await _refresh_summary(
+            backend=backend,
+            summarizer=summarizer,
+            item=item,
+            repo_id=repo_id,
+            full_name=full_name,
+            readme_content=readme_content,
+        )
+        changed = True
 
     if index_manifest:
         manifest = await fetcher.fetch_manifest(full_name, language=item.get("language"))
@@ -304,6 +336,37 @@ async def _index_item(
             await cache.set_text(manifest_key, "1", MANIFEST_MARKER_TTL_SECONDS)
 
     return "indexed" if changed else "skipped"
+
+
+async def _refresh_summary(
+    *,
+    backend: BackendClient,
+    summarizer: RepoSummarizer,
+    item: dict[str, Any],
+    repo_id: int,
+    full_name: str,
+    readme_content: str,
+) -> None:
+    """README 语言治理后生成 ≤500 字符档案摘要；正文缺失时读文档库回填。"""
+    metadata = build_metadata(item)
+    if not readme_content:
+        # 存量补摘要：README 未重新抓取，直接读文档库里的已翻译正文
+        try:
+            stored = await backend.get_repo_readme(repo_id)
+            readme_content = str(stored.get("content") or "")
+        except BackendError as exc:
+            logger.warning("summary_readme_fetch_failed", repo=full_name, detail=str(exc)[:200])
+    if readme_content:
+        try:
+            summary = await summarizer.summarize(readme=readme_content, metadata=metadata)
+        except SummaryError as exc:
+            logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
+            summary = fallback_summary(metadata)
+    else:
+        # 没有 README 内容时只用事实字段拼摘要，避免模型凭空编造功能
+        summary = fallback_summary(metadata)
+    await backend.update_repo_summary(repo_id, summary)
+    logger.info("summary_updated", repo=full_name, chars=len(summary))
 
 
 async def run_translation_backfill(

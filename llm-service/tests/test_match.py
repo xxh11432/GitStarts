@@ -284,7 +284,7 @@ async def test_match_parses_raw_text_with_llm(settings: Settings) -> None:
     vector = FakeVector(_hits())
     llm = FakeLlm(
         requirement=LlmRequirement(
-            goal="数据分析看板",
+            search_query="data analytics dashboard",
             must=[Condition(key="platform", value="linux")],
             should=[Condition(key="category", value="BI")],
         )
@@ -293,10 +293,10 @@ async def test_match_parses_raw_text_with_llm(settings: Settings) -> None:
 
     events = await _collect(runner, MatchRequest(raw_text="想要一个能部署在 Linux 的数据分析看板"))
     parsed = next(event for event in events if event.name == "parsed").data
-    assert parsed["requirement"]["goal"] == "数据分析看板"
     assert parsed["requirement"]["degraded"] is False
-    # 中文 goal 经术语归一化得到英文 query（看板→dashboard），无需再调模型改写
-    assert parsed["requirement"]["search_query"] == "dashboard"
+    # 解析只保留 search_query，不再产出 goal
+    assert parsed["requirement"]["goal"] == ""
+    assert parsed["requirement"]["search_query"] == "data analytics dashboard"
     assert backend.created[0]["raw_text"] == "想要一个能部署在 Linux 的数据分析看板"
 
 
@@ -423,7 +423,7 @@ def test_fit_candidate_breakdown_and_risks() -> None:
     assert any("归档" in risk for risk in candidate.risks)
 
 
-def test_normalize_requirement_dedupes_and_falls_back_to_raw_text() -> None:
+def test_normalize_requirement_dedupes_without_goal_fallback() -> None:
     requirement = Requirement(
         must=[Condition(key="language", value="Go"), Condition(key="Language", value="Go")],
         exclude=["SaaS", "saas"],
@@ -431,7 +431,8 @@ def test_normalize_requirement_dedupes_and_falls_back_to_raw_text() -> None:
     normalized = normalize_requirement(requirement, "  我想找 Go 项目  ")
     assert len(normalized.must) == 1
     assert normalized.exclude == ["SaaS"]
-    assert normalized.goal == "我想找 Go 项目"
+    # 不再用原文兜底 goal，检索统一走 search_query
+    assert normalized.goal == ""
 
 
 async def test_parse_requirement_falls_back_when_llm_breaks() -> None:
@@ -696,10 +697,12 @@ def test_cache_key_carries_pipeline_version(settings: Settings) -> None:
 def test_rerank_query_and_document_builders() -> None:
     requirement = Requirement(goal="知识库", search_query="self-hosted RAG")
     assert build_rerank_query(requirement, "原文") == "self-hosted RAG"
-    # 无英文检索句时用英文 goal / 别名归一出英文；仍无英文则不进入交叉编码器
-    assert build_rerank_query(Requirement(goal="知识库"), "原文") == "knowledge base"
+    # 不再回退 goal：无英文检索句时只用英文原文，仍无英文则不进入交叉编码器
+    assert (
+        build_rerank_query(Requirement(goal="知识库"), "plain english text")
+        == "plain english text"
+    )
     assert build_rerank_query(Requirement(goal="纯中文"), "纯中文原文") == ""
-    assert build_rerank_query(Requirement(goal="knowledge base"), None) == "knowledge base"
 
     document = build_rerank_document(
         {"description": "开源知识库", "topics": ["rag", "search"]},

@@ -41,7 +41,8 @@ public class RepoAssembler {
                 repo.getLatestReleaseAt(),
                 repo.getDefaultBranch(),
                 repo.getPushedAt(),
-                repo.getCreatedAt());
+                repo.getCreatedAt(),
+                repo.getRepoSummary());
     }
 
     /**

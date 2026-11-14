@@ -38,6 +38,8 @@ public class Repository {
     private LocalDateTime syncedAt;
     private String readmeSha;
     private LocalDateTime docsIndexedAt;
+    private String repoSummary;
+    private LocalDateTime summaryGeneratedAt;
 
     public Long getId() {
         return id;
@@ -261,5 +263,21 @@ public class Repository {
 
     public void setDocsIndexedAt(LocalDateTime docsIndexedAt) {
         this.docsIndexedAt = docsIndexedAt;
+    }
+
+    public String getRepoSummary() {
+        return repoSummary;
+    }
+
+    public void setRepoSummary(String repoSummary) {
+        this.repoSummary = repoSummary;
+    }
+
+    public LocalDateTime getSummaryGeneratedAt() {
+        return summaryGeneratedAt;
+    }
+
+    public void setSummaryGeneratedAt(LocalDateTime summaryGeneratedAt) {
+        this.summaryGeneratedAt = summaryGeneratedAt;
     }
 }

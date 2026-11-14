@@ -20,6 +20,7 @@ from app.services.embedding import EmbeddingService
 from worker.embed import EmbeddingCache
 from worker.fetch_docs import ReadmeFetcher
 from worker.pipeline import initialized_key, run_index_pass, run_translation_backfill
+from worker.summarize import RepoSummarizer
 from worker.translate import ReadmeTranslator
 
 logger = structlog.get_logger("worker")
@@ -33,6 +34,7 @@ def build_scheduler(
     vector: VectorStore,
     cache: CacheClient,
     translator: ReadmeTranslator,
+    summarizer: RepoSummarizer,
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
     scheduler.add_job(
@@ -59,6 +61,7 @@ def build_scheduler(
                 "vector": vector,
                 "cache": cache,
                 "translator": translator,
+                "summarizer": summarizer,
             },
         )
     if settings.index_on_startup:
@@ -76,6 +79,7 @@ def build_scheduler(
                 "vector": vector,
                 "cache": cache,
                 "translator": translator,
+                "summarizer": summarizer,
             },
         )
     if settings.readme_translate_enabled:
@@ -123,6 +127,7 @@ async def bootstrap_index(
     vector: VectorStore,
     cache: CacheClient,
     translator: ReadmeTranslator,
+    summarizer: RepoSummarizer,
 ) -> None:
     """首次启动执行全量；完成后打标记，之后只跑增量。"""
     initialized = await cache.get_text(initialized_key(settings))
@@ -135,6 +140,7 @@ async def bootstrap_index(
         vector=vector,
         cache=cache,
         translator=translator,
+        summarizer=summarizer,
         full=full,
     )
     # 全量轮允许少量脏数据（README/manifest 抓取或 embedding 偶发失败）；
@@ -154,6 +160,7 @@ async def run_incremental(
     vector: VectorStore,
     cache: CacheClient,
     translator: ReadmeTranslator,
+    summarizer: RepoSummarizer,
 ) -> None:
     await run_index_pass(
         settings,
@@ -163,6 +170,7 @@ async def run_incremental(
         vector=vector,
         cache=cache,
         translator=translator,
+        summarizer=summarizer,
         full=False,
     )
 
@@ -201,8 +209,11 @@ async def main() -> None:
     cache = CacheClient(settings)
     embedding = EmbeddingCache(EmbeddingService(settings))
     translator = ReadmeTranslator(settings)
+    summarizer = RepoSummarizer(settings)
 
-    scheduler = build_scheduler(settings, backend, fetcher, embedding, vector, cache, translator)
+    scheduler = build_scheduler(
+        settings, backend, fetcher, embedding, vector, cache, translator, summarizer
+    )
     scheduler.start()
     logger.info("worker_started", jobs=[job.id for job in scheduler.get_jobs()])
 
@@ -214,6 +225,7 @@ async def main() -> None:
         await vector.close()
         await cache.close()
         await translator.close()
+        await summarizer.close()
         logger.info("worker_stopped")
 
 

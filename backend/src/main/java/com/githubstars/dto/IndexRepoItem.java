@@ -18,5 +18,9 @@ public record IndexRepoItem(
         String category,
         String license,
         String platform,
-        Integer stars) {
+        Integer stars,
+        Integer forks,
+        LocalDateTime latestReleaseAt,
+        String repoSummary,
+        String description) {
 }

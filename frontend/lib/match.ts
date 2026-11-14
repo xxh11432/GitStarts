@@ -40,6 +40,7 @@ export interface FitBreakdownView {
   semantic: number;
   coverage: number;
   maintenance: number;
+  volume?: number;
 }
 
 export interface MatchEvidence {

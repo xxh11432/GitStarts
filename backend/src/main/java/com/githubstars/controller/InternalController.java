@@ -17,7 +17,9 @@ import com.githubstars.dto.QuotaReserveResponse;
 import com.githubstars.dto.QuotaResponse;
 import com.githubstars.dto.RepoBatchRequest;
 import com.githubstars.dto.RepoDocumentUpsertRequest;
+import com.githubstars.dto.RepoReadmeResponse;
 import com.githubstars.dto.RepoResponse;
+import com.githubstars.dto.RepoSummaryUpdateRequest;
 import com.githubstars.security.OAuth2UserPrincipal;
 import com.githubstars.service.ComparisonService;
 import com.githubstars.service.ConversationService;
@@ -174,6 +176,24 @@ public class InternalController {
     @PostMapping("/repo-documents")
     public Map<String, Object> upsertDocument(@RequestBody RepoDocumentUpsertRequest request) {
         return Map.of("id", documentService.upsert(request));
+    }
+
+    /**
+     * 索引 worker：回写仓库档案摘要（功能/体量/活跃度/部署/许可，≤500 字符）。
+     */
+    @PostMapping("/repos/{id}/summary")
+    public Map<String, Object> updateRepoSummary(@PathVariable Long id,
+                                                 @RequestBody RepoSummaryUpdateRequest request) {
+        documentService.updateSummary(id, request.summary());
+        return Map.of("id", id);
+    }
+
+    /**
+     * 索引 worker：读取已存 README（摘要回填用，不重新消耗 GitHub 额度）。
+     */
+    @GetMapping("/repo-documents/{repoId}")
+    public RepoReadmeResponse repoReadme(@PathVariable Long repoId) {
+        return documentService.getReadme(repoId);
     }
 
     /**

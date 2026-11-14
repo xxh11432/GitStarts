@@ -114,6 +114,8 @@ class Settings(BaseSettings):
     readme_translate_interval_minutes: int = 60
     # 翻译结果长度上限（backend 单文档上限 2,000,000 字符）
     readme_translate_max_output_chars: int = 1_950_000
+    # 仓库摘要并发回填：只受模型供应商 RPS 限制，不与串行索引共用并发度
+    summary_backfill_concurrency: int = 30
 
     # Match (M4)
     match_limit_default: int = 6

@@ -7,6 +7,7 @@ import com.githubstars.dto.IndexRepoPage;
 import com.githubstars.dto.PendingDocItem;
 import com.githubstars.dto.PendingDocPage;
 import com.githubstars.dto.RepoDocumentUpsertRequest;
+import com.githubstars.dto.RepoReadmeResponse;
 import com.githubstars.dto.RepoResponse;
 import com.githubstars.entity.RepoDocument;
 import com.githubstars.entity.Repository;
@@ -28,6 +29,8 @@ public class DocumentService {
 
     private static final String KIND_README = "readme";
     private static final int CONTENT_MAX_LENGTH = 2_000_000;
+    // 摘要回填只需要 README 开头部分，截断后传输更轻
+    private static final int README_EXCERPT_LENGTH = 8000;
 
     private final RepoDocumentMapper documentMapper;
     private final RepositoryMapper repositoryMapper;
@@ -54,7 +57,8 @@ public class DocumentService {
                 .map(repo -> new IndexRepoItem(repo.getId(), repo.getFullName(), repo.getDefaultBranch(),
                         repo.getPushedAt(), repo.getReadmeSha(), null, repo.getDocsIndexedAt(),
                         repo.getLanguage(), repo.getCategory(), repo.getLicense(), repo.getPlatform(),
-                        repo.getStars()))
+                        repo.getStars(), repo.getForks(), repo.getLatestReleaseAt(),
+                        repo.getRepoSummary(), repo.getDescription()))
                 .toList();
         if (!items.isEmpty()) {
             Map<Long, String> etags = documentMapper.selectList(new LambdaQueryWrapper<RepoDocument>()
@@ -66,7 +70,9 @@ public class DocumentService {
             items = items.stream()
                     .map(item -> new IndexRepoItem(item.repoId(), item.fullName(), item.defaultBranch(),
                             item.pushedAt(), item.readmeSha(), etags.get(item.repoId()), item.docsIndexedAt(),
-                            item.language(), item.category(), item.license(), item.platform(), item.stars()))
+                            item.language(), item.category(), item.license(), item.platform(), item.stars(),
+                            item.forks(), item.latestReleaseAt(), item.repoSummary(),
+                            item.description()))
                     .toList();
         }
         Long nextCursor = items.isEmpty() ? null : items.get(items.size() - 1).repoId();
@@ -155,6 +161,44 @@ public class DocumentService {
                     .set(Repository::getReadmeSha, request.sha()));
         }
         return document.getId();
+    }
+
+    /**
+     * 读取已存 README 原文，供 worker 回填摘要；内容在服务端截断，避免大文档传输。
+     */
+    public RepoReadmeResponse getReadme(Long repoId) {
+        if (repoId == null) {
+            throw new IllegalArgumentException("repoId 必填");
+        }
+        RepoDocument document = documentMapper.selectOne(new LambdaQueryWrapper<RepoDocument>()
+                .eq(RepoDocument::getRepoId, repoId)
+                .eq(RepoDocument::getKind, KIND_README));
+        if (document == null || document.getContent() == null) {
+            return new RepoReadmeResponse(repoId, "", null, null, null);
+        }
+        String content = document.getContent();
+        if (content.length() > README_EXCERPT_LENGTH) {
+            content = content.substring(0, README_EXCERPT_LENGTH);
+        }
+        return new RepoReadmeResponse(repoId, content, document.getSha(), document.getEtag(),
+                document.getLang());
+    }
+
+    /**
+     * worker 生成仓库档案摘要后回写；500 字符上限在服务端再裁一次。
+     */
+    public void updateSummary(Long repoId, String summary) {
+        if (repoId == null) {
+            throw new IllegalArgumentException("repoId 必填");
+        }
+        String value = summary == null ? null : summary.trim();
+        if (value != null && value.length() > 500) {
+            value = value.substring(0, 500);
+        }
+        repositoryMapper.update(null, new LambdaUpdateWrapper<Repository>()
+                .eq(Repository::getId, repoId)
+                .set(Repository::getRepoSummary, value)
+                .set(Repository::getSummaryGeneratedAt, LocalDateTime.now()));
     }
 
     public void markIndexed(List<Long> repoIds) {

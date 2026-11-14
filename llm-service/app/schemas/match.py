@@ -40,7 +40,6 @@ class Requirement(CamelModel):
 class LlmRequirement(CamelModel):
     """传给 with_structured_output 的 schema，不包含本地诊断字段。"""
 
-    goal: str = Field(default="", max_length=500)
     domain: str | None = Field(default=None, max_length=100)
     audience: str | None = Field(default=None, max_length=100)
     search_query: str = Field(default="", max_length=120)
@@ -68,6 +67,7 @@ class FitBreakdown(CamelModel):
     semantic: float
     coverage: float
     maintenance: float
+    volume: float = 0.0
 
 
 class Evidence(CamelModel):

@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS repositories (
     synced_at     DATETIME,
     readme_sha    VARCHAR(64) COMMENT 'README blob sha（M4 增量索引）',
     docs_indexed_at DATETIME COMMENT '最近一次完成索引的时间（M4）',
+    repo_summary  VARCHAR(1000) COMMENT '仓库档案摘要：功能/体量/活跃度/部署/许可，≤500 字符',
+    summary_generated_at DATETIME COMMENT '最近一次生成仓库摘要的时间',
     INDEX idx_stars(stars),
     INDEX idx_language(language),
     INDEX idx_category(category),
@@ -278,6 +280,10 @@ CALL gs_add_column('repositories', 'release_checked_at',
     'ALTER TABLE repositories ADD COLUMN release_checked_at DATETIME NULL COMMENT ''最近一次检查 Release 的时间''');
 CALL gs_add_column('repositories', 'heat_score',
     'ALTER TABLE repositories ADD COLUMN heat_score INT DEFAULT 0 COMMENT ''活跃度评分（Star 体量 × 近期推送衰减）''');
+CALL gs_add_column('repositories', 'repo_summary',
+    'ALTER TABLE repositories ADD COLUMN repo_summary VARCHAR(1000) NULL COMMENT ''仓库档案摘要：功能/体量/活跃度/部署/许可，≤500 字符''');
+CALL gs_add_column('repositories', 'summary_generated_at',
+    'ALTER TABLE repositories ADD COLUMN summary_generated_at DATETIME NULL COMMENT ''最近一次生成仓库摘要的时间''');
 
 DROP PROCEDURE IF EXISTS gs_add_index;
 DELIMITER $$
