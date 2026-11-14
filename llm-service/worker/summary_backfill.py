@@ -29,11 +29,10 @@ PROGRESS_EVERY = 100
 
 
 class _RateLimiter:
-    """按秒均匀放行；遇到 429 自动减半并冷却，连续成功后再缓慢回暖。"""
+    """全局按秒放行；遇到 429 只做一次全局冷却，不永久压低速率。"""
 
     def __init__(self, rps: float) -> None:
-        self._base = 1.0 / rps if rps and rps > 0 else 0.0
-        self._interval = self._base
+        self._interval = 1.0 / rps if rps and rps > 0 else 0.0
         self._lock = asyncio.Lock()
         self._next_at = 0.0
 
@@ -47,17 +46,9 @@ class _RateLimiter:
                 await asyncio.sleep(wait)
             self._next_at = max(time.monotonic(), self._next_at) + self._interval
 
-    def throttle(self) -> None:
-        """429：把放行间隔翻倍，最低降到 0.2 rps。"""
-        if self._base <= 0:
-            return
-        self._interval = min(self._interval * 2, 5.0)
-
-    def ease(self) -> None:
-        """正常返回后缓慢恢复，避免长期停留在降速档。"""
-        if self._base <= 0:
-            return
-        self._interval = max(self._base, self._interval * 0.95)
+    def cooldown(self, seconds: float) -> None:
+        """429：全体暂停若干秒后重新刺探，避免把放行间隔永久拉长。"""
+        self._next_at = max(self._next_at, time.monotonic() + seconds)
 
 
 def _is_rate_limited(exc: Exception) -> bool:
@@ -87,20 +78,18 @@ async def _process_item(
         await backend.update_repo_summary(repo_id, fallback_summary(metadata))
         return True
 
-    # 429 时等几秒再刺探一次；其余异常直接留给下一轮
+    # 429 时全局冷却 5 秒再刺探一次；其余异常直接留给下一轮
     for probe in range(2):
         await limiter.acquire()
         try:
             summary = await summarizer.summarize(readme=readme, metadata=metadata)
         except SummaryError as exc:
             if _is_rate_limited(exc) and probe == 0:
-                limiter.throttle()
+                limiter.cooldown(5.0)
                 logger.info("summary_rate_limited_probe", repo=full_name)
-                await asyncio.sleep(5.0)
                 continue
             logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
             raise
-        limiter.ease()
         await backend.update_repo_summary(repo_id, summary)
         return True
     return False
