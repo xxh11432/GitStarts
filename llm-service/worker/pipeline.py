@@ -360,8 +360,9 @@ async def _refresh_summary(
         try:
             summary = await summarizer.summarize(readme=readme_content, metadata=metadata)
         except SummaryError as exc:
+            # 限流或上游异常时不写劣质摘要，留待下一轮重试
             logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
-            summary = fallback_summary(metadata)
+            return
     else:
         # 没有 README 内容时只用事实字段拼摘要，避免模型凭空编造功能
         summary = fallback_summary(metadata)

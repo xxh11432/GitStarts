@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import structlog
 
@@ -27,11 +28,31 @@ PAGE_SIZE = 100
 PROGRESS_EVERY = 100
 
 
+class _RateLimiter:
+    """按秒均匀放行，避免并发请求瞬间打满供应商配额（与本地对话共享同一账号）。"""
+
+    def __init__(self, rps: float) -> None:
+        self._interval = 1.0 / rps if rps and rps > 0 else 0.0
+        self._lock = asyncio.Lock()
+        self._next_at = 0.0
+
+    async def acquire(self) -> None:
+        if self._interval <= 0:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            wait = self._next_at - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._next_at = max(time.monotonic(), self._next_at) + self._interval
+
+
 async def _process_item(
     item: dict[str, object],
     *,
     backend: BackendClient,
     summarizer: RepoSummarizer,
+    limiter: _RateLimiter,
 ) -> bool:
     repo_id = int(item.get("repoId") or 0)
     full_name = str(item.get("fullName") or "")
@@ -44,14 +65,16 @@ async def _process_item(
         readme = str(stored.get("content") or "")
     except BackendError as exc:
         logger.warning("summary_readme_fetch_failed", repo=full_name, detail=str(exc)[:200])
-    if readme:
-        try:
-            summary = await summarizer.summarize(readme=readme, metadata=metadata)
-        except SummaryError as exc:
-            logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
-            summary = fallback_summary(metadata)
-    else:
-        summary = fallback_summary(metadata)
+    if not readme:
+        # 没有正文只能写规则摘要；有正文时失败一律不写，留待下一轮重试
+        await backend.update_repo_summary(repo_id, fallback_summary(metadata))
+        return True
+    await limiter.acquire()
+    try:
+        summary = await summarizer.summarize(readme=readme, metadata=metadata)
+    except SummaryError as exc:
+        logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
+        raise
     await backend.update_repo_summary(repo_id, summary)
     return True
 
@@ -70,6 +93,7 @@ async def run_summary_backfill(
         return stats
 
     workers = max(1, concurrency or settings.summary_backfill_concurrency)
+    limiter = _RateLimiter(settings.summary_backfill_rps)
     queue: asyncio.Queue[dict[str, object] | None] = asyncio.Queue(maxsize=workers * 4)
 
     async def consume() -> None:
@@ -79,7 +103,12 @@ async def run_summary_backfill(
                 if item is None:
                     return
                 try:
-                    ok = await _process_item(item, backend=backend, summarizer=summarizer)
+                    ok = await _process_item(
+                        item,
+                        backend=backend,
+                        summarizer=summarizer,
+                        limiter=limiter,
+                    )
                 except Exception as exc:  # 单条失败不阻断整轮回填
                     stats["failed"] += 1
                     logger.warning(
@@ -133,6 +162,7 @@ async def main() -> None:
     logger.info(
         "summary_backfill_started",
         concurrency=settings.summary_backfill_concurrency,
+        rps=settings.summary_backfill_rps,
     )
     try:
         await run_summary_backfill(
