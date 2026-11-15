@@ -264,6 +264,18 @@ class VectorStore:
         groups.sort(key=lambda item: item.best_score, reverse=True)
         return groups
 
+    async def has_chunks(self, repo_id: int, chunk_type: str) -> bool:
+        """判断某个仓库是否已有指定类型的向量块，供摘要补索引使用。"""
+        client = self._connect()
+        if not await client.collection_exists(self.collection):
+            return False
+        result = await client.count(
+            collection_name=self.collection,
+            count_filter=build_filter(repo_id=repo_id, chunk_types=[chunk_type]),
+            exact=False,
+        )
+        return result.count > 0
+
     async def upsert_chunks(self, points: list[ChunkPoint]) -> int:
         if not points:
             return 0

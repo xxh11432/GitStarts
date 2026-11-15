@@ -125,9 +125,9 @@ class Settings(BaseSettings):
     # 分组召回：limit 表示仓库数；关闭后回退到 chunk 召回 + 应用层聚合
     match_group_recall_enabled: bool = True
     match_group_size: int = 2
-    match_cache_version: str = "v5"
-    # rerank 文档构造：summary=只用档案摘要；summary_plus=摘要+描述+topics（A/B 实验用）
-    rerank_doc_mode: str = "summary"
+    match_cache_version: str = "v7"
+    # rerank 文档构造：summary_plus=摘要+描述+topics（默认，保住产品级细节词）
+    rerank_doc_mode: str = "summary_plus"
 
     # Compare (M5)
     compare_schema_version: str = "v1"

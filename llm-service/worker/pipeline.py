@@ -215,6 +215,7 @@ async def _index_item(
     repo = _repo_payload(item)
     changed = False
     readme_content = ""
+    summary_text = ""
 
     if index_readme_docs:
         etag = None if full else item.get("readmeEtag")
@@ -274,7 +275,7 @@ async def _index_item(
             changed = True
             # 写文档后立即生成摘要，再进入切块与向量化
             if summarizer is not None and index_summary:
-                await _refresh_summary(
+                summary_text = await _refresh_summary(
                     backend=backend,
                     summarizer=summarizer,
                     item=item,
@@ -294,13 +295,24 @@ async def _index_item(
 
     # 没有新抓到的 README（未变 / 缺失 / 存量回填）时，从文档库取正文补摘要
     if summarizer is not None and index_summary and not readme_content:
-        await _refresh_summary(
+        summary_text = await _refresh_summary(
             backend=backend,
             summarizer=summarizer,
             item=item,
             repo_id=repo_id,
             full_name=full_name,
             readme_content=readme_content,
+        )
+        changed = True
+
+    if summary_text:
+        await _index_summary_chunk(
+            settings,
+            vector,
+            embedding,
+            repo=repo,
+            full_name=full_name,
+            summary=summary_text,
         )
         changed = True
 
@@ -338,6 +350,29 @@ async def _index_item(
     return "indexed" if changed else "skipped"
 
 
+async def _index_summary_chunk(
+    settings: Settings,
+    vector: VectorStore,
+    embedding: EmbeddingCache,
+    *,
+    repo: dict[str, Any],
+    full_name: str,
+    summary: str,
+) -> None:
+    """把 repoSummary 作为独立 chunk_type 写入 Qdrant，参与产品级语义召回。"""
+    await index_readme(
+        settings,
+        vector,
+        embedding,
+        repo=repo,
+        content=summary,
+        sha=None,
+        source_url=f"https://github.com/{full_name}",
+        chunk_type="repo_summary",
+    )
+    logger.info("summary_indexed", repo=full_name, chars=len(summary))
+
+
 async def _refresh_summary(
     *,
     backend: BackendClient,
@@ -346,7 +381,7 @@ async def _refresh_summary(
     repo_id: int,
     full_name: str,
     readme_content: str,
-) -> None:
+) -> str | None:
     """README 语言治理后生成 ≤500 字符档案摘要；正文缺失时读文档库回填。"""
     metadata = build_metadata(item)
     if not readme_content:
@@ -362,12 +397,13 @@ async def _refresh_summary(
         except SummaryError as exc:
             # 限流或上游异常时不写劣质摘要，留待下一轮重试
             logger.warning("summary_failed", repo=full_name, detail=str(exc)[:200])
-            return
+            return None
     else:
         # 没有 README 内容时只用事实字段拼摘要，避免模型凭空编造功能
         summary = fallback_summary(metadata)
     await backend.update_repo_summary(repo_id, summary)
     logger.info("summary_updated", repo=full_name, chars=len(summary))
+    return summary
 
 
 async def run_translation_backfill(

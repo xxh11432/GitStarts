@@ -11,19 +11,24 @@ from app.graphs.match_graph import (
     MatchRunner,
     build_rerank_document,
     build_rerank_query,
+    build_rerank_query_weights,
     build_semantic_queries,
     collect_hard_filters,
     evaluate_condition,
     fit_candidate,
     fuse_recall_rankings,
     normalize_requirement,
+    normalize_sub_questions,
     parse_requirement,
+    split_sub_questions,
+    subquestion_limit,
 )
 from app.schemas.match import (
     Condition,
     LlmRequirement,
     MatchRequest,
     Requirement,
+    SubQuestionList,
 )
 
 USER_ID = 7
@@ -35,9 +40,11 @@ class FakeLlm:
         *,
         requirement: LlmRequirement | None = None,
         rewrite: str = "data analytics dashboard",
+        sub_questions: list[str] | None = None,
     ) -> None:
         self._requirement = requirement
         self._rewrite = rewrite
+        self._sub_questions = sub_questions or []
         self.calls = 0
         self.rewrites = 0
 
@@ -47,6 +54,8 @@ class FakeLlm:
         class Runnable:
             async def ainvoke(self, messages: list[Any], config: Any = None) -> Any:
                 outer.calls += 1
+                if schema is SubQuestionList:
+                    return SubQuestionList(sub_questions=outer._sub_questions)
                 return outer._requirement or LlmRequirement(goal="兜底目标")
 
         return Runnable()
@@ -512,16 +521,25 @@ async def test_match_ranks_by_fit_without_llm_rerank(settings: Settings) -> None
     assert "rerank_scored" in runner.recall_stats
 
 
-def test_build_semantic_queries_returns_single_english_query() -> None:
+def test_build_semantic_queries_returns_sub_queries_only() -> None:
     requirement = Requirement(
         goal="私有部署知识库",
         search_query="self-hosted knowledge base RAG",
+        sub_questions=["rag document QA", "pdf chat web ui"],
         keywords=["knowledge base", "dify"],
         must=[Condition(key="license", value="MIT")],
     )
     queries = build_semantic_queries(requirement)
-    assert queries == ["self-hosted knowledge base RAG"]
+    assert queries == ["rag document QA", "pdf chat web ui"]
     assert all(len(query) <= 200 for query in queries)
+
+
+def test_build_semantic_queries_falls_back_to_search_query() -> None:
+    requirement = Requirement(
+        search_query="self-hosted RAG",
+        sub_questions=["纯中文子问题"],
+    )
+    assert build_semantic_queries(requirement) == ["self-hosted RAG"]
 
 
 def test_build_semantic_queries_skips_non_english_query() -> None:
@@ -530,22 +548,39 @@ def test_build_semantic_queries_skips_non_english_query() -> None:
     assert build_semantic_queries(
         Requirement(goal="知识库", search_query="纯中文描述")
     ) == []
+    assert build_semantic_queries(
+        Requirement(goal="知识库", sub_questions=["纯中文子问题"])
+    ) == []
 
 
-def test_fuse_recall_rankings_equal_weight_and_limit() -> None:
-    # 两路都命中的 c 排第一；单路各自的第 1 名紧随其后
-    assert fuse_recall_rankings(["a", "b", "c"], ["c", "d"], limit=10) == [
-        "c",
-        "a",
-        "b",
-        "d",
+def test_normalize_sub_questions_dedupes_and_limits() -> None:
+    assert normalize_sub_questions(
+        ["rag document QA", "RAG document QA", "pdf chat", "纯中文子问题"],
+        "self-hosted knowledge base RAG",
+    ) == ["rag document QA", "pdf chat"]
+
+
+async def test_split_sub_questions_uses_llm_schema() -> None:
+    llm = FakeLlm(
+        sub_questions=["rag document QA", "pdf chat web ui", "self-hosted knowledge base"]
+    )
+    assert await split_sub_questions(llm, "self-hosted knowledge base RAG") == [
+        "rag document QA",
+        "pdf chat web ui",
+        "self-hosted knowledge base",
     ]
-    # 两路权重各 50%：只出现在单路第 1 名时得分完全一致
-    assert fuse_recall_rankings(["x"], [], limit=1) == ["x"]
-    assert fuse_recall_rankings([], ["x"], limit=1) == ["x"]
+
+
+def test_fuse_recall_rankings_weighted_and_limit() -> None:
+    # 两路都命中的 c 排第一；单路各自的第 1 名紧随其后
+    assert fuse_recall_rankings(
+        [["a", "b", "c"], ["c", "d"]], [0.5, 0.5], limit=10
+    ) == ["c", "a", "b", "d"]
+    # 权重不同时，高权重单路命中优先
+    assert fuse_recall_rankings([["x"], ["y"]], [0.8, 0.2], limit=2) == ["x", "y"]
     # 只保留前 limit 个仓库进入精排
     vector_ranking = [f"repo-{index}" for index in range(100)]
-    assert len(fuse_recall_rankings(vector_ranking, [], limit=60)) == 60
+    assert len(fuse_recall_rankings([vector_ranking, []], [0.5, 0.5], limit=60)) == 60
 
 
 async def test_keyword_only_repo_enters_rrf_pool(settings: Settings) -> None:
@@ -722,6 +757,31 @@ def test_rerank_query_and_document_builders() -> None:
     assert "Docker 部署" in document
 
 
+def test_build_rerank_query_weights_splits_subquestions() -> None:
+    requirement = Requirement(
+        search_query="self-hosted media server",
+        sub_questions=["movie streaming server", "music streaming server"],
+    )
+    assert build_rerank_query_weights(requirement, None) == [
+        ("movie streaming server", pytest.approx(1 / 2)),
+        ("music streaming server", pytest.approx(1 / 2)),
+    ]
+
+
+def test_subquestion_limit_depends_on_facets() -> None:
+    assert subquestion_limit(Requirement(search_query="simple query")) == 2
+    assert (
+        subquestion_limit(
+            Requirement(
+                search_query="complex query",
+                must=[Condition(key="platform", value="linux")],
+                should=[Condition(key="license", value="MIT")],
+            )
+        )
+        == 4
+    )
+
+
 class FakeReranker:
     enabled = True
 
@@ -741,6 +801,18 @@ class BrokenReranker:
 
     async def score(self, query: str, documents: list[str]) -> list[float]:
         raise RerankError("boom")
+
+
+class MultiQueryReranker:
+    enabled = True
+
+    def __init__(self, scores_by_query: dict[str, list[float]]) -> None:
+        self._scores_by_query = scores_by_query
+        self.queries: list[str] = []
+
+    async def score(self, query: str, documents: list[str]) -> list[float]:
+        self.queries.append(query)
+        return self._scores_by_query.get(query, [0.0] * len(documents))
 
 
 def _rerank_fixture() -> tuple[FakeBackend, FakeGroupVector, list[VectorGroup]]:
@@ -820,6 +892,45 @@ async def test_rerank_sets_semantic_score(settings: Settings) -> None:
     # 取消 RRF 后 semantic 直接等于 rerank 分数
     assert candidates["foo/next"]["breakdown"]["semantic"] == pytest.approx(0.9)
     assert candidates["langgenius/dify"]["breakdown"]["semantic"] == pytest.approx(0.1)
+
+
+async def test_rerank_weighted_average_over_subquestions(settings: Settings) -> None:
+    backend, vector, _ = _rerank_fixture()
+    requirement = Requirement(
+        search_query="AI platform",
+        sub_questions=["knowledge base", "agent workflow"],
+    )
+    reranker = MultiQueryReranker(
+        {
+            "AI": [0.1, 0.2],
+            "knowledge base": [0.5, 0.1],
+            "agent workflow": [0.3, 0.3],
+        }
+    )
+    runner = _runner(
+        settings, backend, vector, FakeLlm(), reranker=reranker  # type: ignore[arg-type]
+    )
+    events = await _collect(
+        runner,
+        MatchRequest(raw_text="AI 平台", structured=requirement),
+    )
+
+    assert reranker.queries == ["knowledge base", "agent workflow"]
+    assert runner.recall_stats["sub_question_count"] == 2
+    assert runner.recall_stats["route_weights"] == [
+        pytest.approx(0.4),
+        pytest.approx(0.4),
+        pytest.approx(0.2),
+    ]
+    candidates = {
+        event.data["repo"]["fullName"]: event.data
+        for event in events
+        if event.name == "candidate"
+    }
+    # dify: (0.5 + 0.3) / 2 = 0.4
+    assert candidates["langgenius/dify"]["breakdown"]["semantic"] == pytest.approx(0.4)
+    # next: (0.1 + 0.3) / 2 = 0.2
+    assert candidates["foo/next"]["breakdown"]["semantic"] == pytest.approx(0.2)
 
 
 async def test_rerank_failure_keeps_zero_semantic(settings: Settings) -> None:

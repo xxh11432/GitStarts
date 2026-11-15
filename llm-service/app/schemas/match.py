@@ -27,6 +27,8 @@ class Requirement(CamelModel):
     audience: str | None = Field(default=None, max_length=100)
     # 一条英文检索式：即使用户用中文提问，也必须改写为英文后仅走英文召回。
     search_query: str = Field(default="", max_length=120)
+    # search_query 归一化后由模型拆分的检索子问题；最多 4 条，按固定权重参与召回与重排。
+    sub_questions: list[str] = Field(default_factory=list, max_length=4)
     # 原词 → 规范术语的归一化记录，供审计与关键词扩展。
     normalized_terms: list[str] = Field(default_factory=list, max_length=10)
     must: list[Condition] = Field(default_factory=list, max_length=10)
@@ -48,6 +50,12 @@ class LlmRequirement(CamelModel):
     should: list[Condition] = Field(default_factory=list, max_length=10)
     exclude: list[str] = Field(default_factory=list, max_length=10)
     keywords: list[str] = Field(default_factory=list, max_length=6)
+
+
+class SubQuestionList(CamelModel):
+    """search_query 归一化后的子问题拆分结果。"""
+
+    sub_questions: list[str] = Field(default_factory=list, max_length=4)
 
 
 class MatchRequest(CamelModel):

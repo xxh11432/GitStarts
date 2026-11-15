@@ -17,6 +17,8 @@ export interface Requirement {
   audience?: string | null;
   /** 英文检索式：用户提问经模型改写为英文，仅用于英文召回 */
   searchQuery?: string;
+  /** search_query 拆分出的英文子问题，用于多路召回与重排 */
+  subQuestions?: string[];
   /** 原词 → 规范术语的归一化记录 */
   normalizedTerms?: string[];
   must: MatchCondition[];

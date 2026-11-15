@@ -2,15 +2,42 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 版本 | v2.1（2026-11-14；v2.0 的召回链路已按英文单路 + 双路 RRF 更新，见第 12 节） |
-| 状态 | 已上线：英文单路 query 改写、向量 + BM25 双路 RRF、README 翻译归一；待索引稳定后复测调权 |
+| 版本 | v3.0（2026-11-15；子问题多路召回 + repoSummary 索引 + 多 query rerank） |
+| 状态 | 已上线：子问题拆分、加权 RRF、repoSummary 召回、`rank=rerank`；最新评测见第 0 节 |
 | 适用范围 | `llm-service`（match / compare 检索）、`ingest-worker`（索引）、`backend`（仓库检索接口） |
-| 部署约束 | 2C2G / 40G 磁盘；Qdrant 容器内存约 160M；集合约 5 万 points |
+| 部署约束 | 2C2G / 40G 磁盘；Qdrant 容器内存约 160M；集合约 6.8 万 points |
 | 设计原则 | 优先确定性流水线；优先复用现有基础设施；每个阶段可独立回滚 |
 
 > 第 4 节中的“过滤放宽阶梯”“RRF 融合”“LLM 重排 ±0.1”属于 v1.0 方案，已在 v2.0 被替代；
-> v2.1 重新引入的双路 RRF 仅作用于“英文向量 + 英文 BM25”两路召回，口径与 v1.0 不同。
-> 当前实际链路与实测结果以第 11、12 节为准。
+> v2.1 的“英文向量 + 英文 BM25 双路 RRF”也已被 v3.0 的子问题多路召回替代。
+> 当前实际链路与实测结果以第 0 节为准，第 11、12 节保留为历史记录。
+
+---
+
+## 0. v3.0 当前链路（2026-11-15）
+
+```text
+用户想法
+  → PARSE_PROMPT 结构化（must / should / exclude / keywords / search_query）
+  → search_query 英文归一化
+  → LLM 拆成同品类子问题（简单 1–2 条，复杂 3–4 条）
+  → 每个子问题单独 embedding + Qdrant 仓库级召回（README / manifest / repo_summary，各 top 60）
+  → 子问题 query 路合计权重 0.8（按条数均分）+ BM25 0.2
+  → 加权 RRF 取前 60
+  → 每个子问题分别对候选做 rerank（summary + description + topics）
+  → 子问题 rerank 分数等权加权平均
+  → rank = rerank，输出候选
+```
+
+关键约束：
+
+- 子问题必须留在同一产品品类，只拆功能 / 部署 / 同义词，禁止扩展到相邻领域。
+- 主 query 不再单独召回；只有拆不出有效子问题时才回退 `search_query`。
+- `repoSummary` 以 `chunk_type=repo_summary` 写入 Qdrant，存量用 `python -m worker.summary_index` 回填。
+- 最终排序不使用 stars / forks / volume；`fit` 仅作前端展示。
+- v7b 40 条评测：Hit@6（match）39/40，Hit@6（match+partial）40/40，
+  Recall@6（match）0.375，Recall@6（match+partial）0.812，MRR（match）0.815；
+  报告见 `doc/eval/judge40-v7b.md`。
 
 ---
 
