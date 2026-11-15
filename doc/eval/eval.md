@@ -62,6 +62,8 @@ python -m tests.eval.run_compare_eval
 ### 2.1 压测
 
 SSE / Qdrant / 配额压测脚本与判定标准见 [ops.md](../deploy/ops.md) 第 4 节。
+RAG 匹配链路的最新实测见 [rag-loadtest-final.md](rag-loadtest-final.md)（首字 P95 38 ms、召回平均 10.5 s、Top-1 严格 55%，稳定并发 2）；复跑用 [load_match.py](../../llm-service/tests/eval/load_match.py)。
+
 核心门槛：
 
 | 指标 | 门槛 |
