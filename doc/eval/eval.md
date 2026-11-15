@@ -23,18 +23,18 @@ python -m tests.eval.run_eval \
 ```
 
 - 数据集：[dataset40-optimized.jsonl](../../llm-service/tests/eval/dataset40-optimized.jsonl)（40 条需求；每条 `relevant` 至少 6 个库内相关仓库）
-- 输出：Markdown 报告（建议写入 `doc/eval/judge40-v7b.md` 或带日期的报告文件）
+- 输出：Markdown 报告（建议写入 `doc/eval/judge40-final.md` 或带日期的报告文件）
 - 指标口径：**仅 LLM-as-Judge**，`expected` 标注不参与计算
   - Hit@6：Top6 是否至少 1 个 match；宽松口径为至少 1 个 match/partial
   - Recall@6：Top6 内 match 数 ÷ 已判定候选数；宽松口径为 (match+partial) ÷ 已判定候选数
   - MRR@6：首个 match / 首个 match+partial 的倒数排名
 - 2026-11-15 当前基线（子问题多路召回、query 0.8 + BM25 0.2、repoSummary 索引、多 query rerank、`rank=rerank`）：
-  [judge40-v7b.md](judge40-v7b.md)
+  [judge40-final.md](judge40-final.md)
   - 40/40 成功；Hit@6（match）39/40；Hit@6（match+partial）40/40
   - Recall@6（match）0.375；Recall@6（match+partial）0.812
   - MRR@6（首个 match）0.815；MRR@6（首个 match/partial）0.975
   - 平均 match 数 2.25；平均 match+partial 数 4.88；判定分布 90/105/45
-- 达标：以 `judge40-v7b.md` 为基线；严格 Recall@6 下降不超过 5%（相对值），且严格 Hit@6 不低于 39/40
+- 达标：以 `judge40-final.md` 为基线；严格 Recall@6 下降不超过 5%（相对值），且严格 Hit@6 不低于 39/40
 
 ### 1.3 深度对比
 

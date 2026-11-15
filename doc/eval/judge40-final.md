@@ -1,19 +1,27 @@
-# 语义匹配召回评测（LLM-as-Judge）
+# GitStars RAG 最终评测报告（冻结版）
 
-- 生成时间：2026-11-15T15:56:26+08:00
-- 数据集：`tests/eval/dataset40-optimized.jsonl`（40 条）
-- 模型：`deepseek-v4-flash`；embedding：`BAAI/bge-m3`（api，1024 维）
-- rerank：`BAAI/bge-reranker-v2-m3`（主 query + 子问题多路 RRF 取前 60，加权 rerank）
-- 指标口径：仅 LLM-as-Judge，不使用 expected 标注命中；match / partial / mismatch 由 Judge 逐候选判定
-- Recall@6：match 数 ÷ 已判定候选数；宽松口径为 (match+partial) ÷ 已判定候选数
-- Hit@6：Top6 是否至少有 1 个 match；宽松口径为至少 1 个 match/partial
+- 冻结日期：2026-11-15
+- 冻结版本：Git commit `8c1c436`（`feat: split match query into subquestions and index repo summaries`）
+- 匹配缓存版本：`MATCH_CACHE_VERSION=v7`
+- 服务端：2C2G 服务器，`gs-llm-service` / `gs-ingest-worker`
+- 向量库：`repo_chunks_bge_m3`，总 points 68329，其中 `repo_summary` 2773 块
+- 复现命令：
 
-## 汇总（LLM-as-Judge）
+```bash
+cd llm-service
+python -m tests.eval.run_eval \
+  --dataset tests/eval/dataset40-optimized.jsonl \
+  --limit 6 \
+  --no-cache
+```
 
-| 指标 | 数值 |
-| --- | --- |
+## 1. 冻结结论
+
+当前版本作为 RAG 召回链路的固定版本，不再继续迭代排序/召回策略。最终指标：
+
+| 指标 | 最终结果 |
+|---|---:|
 | 成功用例 | 40 / 40 |
-| 判定成功用例 | 40 / 40 |
 | Hit@6（至少 1 个 match） | 39 / 40 |
 | Hit@6（至少 1 个 match/partial） | 40 / 40 |
 | Recall@6（match） | 0.375 |
@@ -22,9 +30,35 @@
 | MRR@6（首个 match/partial） | 0.975 |
 | 平均 match 数@6 | 2.25 |
 | 平均 match+partial 数@6 | 4.88 |
-| 已判定候选数（match/partial/mismatch/未判定） | 90/105/45/0 |
+| 判定分布 match/partial/mismatch | 90 / 105 / 45 |
 
-## 逐条结果
+结论：Top6 中至少有一个可直接选型 match 的用例为 39/40；全部 40 条都有至少一个 match/partial。严格口径相比首版提升约 30.7%（0.287 → 0.375），mismatch 从 55 降到 45。
+
+## 2. 迭代过程
+
+| 版本 | 主要改动 | Hit@6（match） | Recall@6（match） | Recall@6（match+partial） | MRR@6（match） | 平均 match@6 | 平均 match+partial@6 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 首版 | 单 query；summary 模式；`0.8×rerank + 0.2×volume`；未索引 repoSummary | 37/40 | 0.287 | 0.771 | 0.684 | 1.73 | 4.62 |
+| v7 | 子问题多路召回（含主 query）；query 0.8 + BM25 0.2；repoSummary 索引；`summary_plus`；`rank=rerank` | 37/40 | 0.358 | 0.817 | 0.706 | 2.15 | 4.90 |
+| 最终版 | 收紧子问题 prompt；简单需求 1–2 条、复杂 3–4 条；去掉主 query，只用于子问题召回与 rerank | **39/40** | **0.375** | 0.812 | **0.815** | **2.25** | 4.88 |
+
+迭代说明：
+
+1. 首版确认了标注指标不可用，改为纯 LLM-as-Judge；同时暴露出缺少 repoSummary 召回、体量权重过大、单 query 覆盖不足三个问题。
+2. v7 引入子问题多路召回、repoSummary 索引、`summary_plus` 和 `rank=rerank`，严格 Recall 从 0.287 提升到 0.358，MRR 从 0.684 提升到 0.706；但子问题漂移导致部分领域（CI/CD、白板、容器管理）出现回退。
+3. 最终版将子问题约束在同一产品品类，并去掉主 query 的额外稀释，严格 Hit 提升到 39/40，严格 MRR 提升到 0.815；放松口径基本持平（0.817 → 0.812）。
+
+最终版本已知边界：
+
+- `notes-selfhost` 仍无严格 match：Top6 主要是 Markdown 笔记 partial，缺少“双向链接”的直接证据。
+- 每条用例约 9.6–12 秒，主要耗时来自多子问题 rerank；这是当前固定版本的已知延迟成本。
+- `container-ui`、`crawler` 等边界场景仍有 1 个严格 match，但放宽口径可接受。
+
+---
+
+## 3. 最终逐条结果与判定明细
+
+### 逐条结果
 
 | 用例 | 描述 | match | partial | mismatch | 首个 match | 首个可接受 | 耗时(ms) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -69,7 +103,7 @@
 | db-client | 找一个开源的数据库管理工具，支持 MySQL、PostgreSQL 和 SSH 隧道，桌面端更好 | 2 | 1 | 3 | 2 | 1 | 11585 |
 | crawler | 需要一个爬虫框架，能处理登录、分页和反爬，支持分布式调度 | 1 | 3 | 2 | 2 | 1 | 10926 |
 
-## 判定明细
+### 判定明细
 
 > 理由由模型生成，仅用于审计召回质量；争议项需人工复核。
 

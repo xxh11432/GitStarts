@@ -37,7 +37,7 @@
 - 最终排序不使用 stars / forks / volume；`fit` 仅作前端展示。
 - v7b 40 条评测：Hit@6（match）39/40，Hit@6（match+partial）40/40，
   Recall@6（match）0.375，Recall@6（match+partial）0.812，MRR（match）0.815；
-  报告见 `doc/eval/judge40-v7b.md`。
+  报告见 `doc/eval/judge40-final.md`。
 
 ---
 

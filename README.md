@@ -92,7 +92,7 @@ rank = 加权 rerank 分数
 - **M7 上线打磨**：请求级 `ai_metrics`（token / 延迟 / 结果）与 `/ops` 成本看板、分类型 P95 与预算告警；README 抓取 SSRF 白名单；后端依赖补丁与 OSV 复检脚本；前端升级 Next.js 16 + React 19（`npm audit` critical/high 归零）；Nginx 静态缓存 / 安全响应头 / 按 IP 限流 / 关闭图片优化器；Redis AOF 与容器健康检查；跳过链接、表格语义与减少动效；部署 / 运维 / 评测 / 故障预案手册与 HTTPS 示例
 - **体验与可观测性增强**：仓库补充多平台 `platforms` 与最新 Release（GraphQL 批量刷新）；`X-Request-Id` 贯穿 Nginx / backend / llm-service 日志；embedding 启动预热、对比缓存先于配额判断；前端升级为 shadcn/ui + Radix 组件体系，新增 `⌘K` 命令面板、移动端导航、跨页对比篮（最多 4 个）与匹配 / 对比工作台状态恢复
 - **活跃度采集与排序**：`heat_score`（Star 体量 × 近期推送衰减）随采集更新、启动时回填；`/repos?sort=active`、排行榜「活跃综合榜」与筛选器均支持
-- **RAG 召回优化（2026-11-15）**：英文 `search_query` 归一化后由模型拆成同品类子问题（简单需求 1–2 条、复杂需求 3–4 条）；主 query 不再单独召回，子问题 query 路合计 0.8、BM25 0.2 做加权 RRF，取前 60；`repoSummary` 作为 `chunk_type=repo_summary` 参与向量召回；rerank 用 `summary + description + topics` 对子问题分别打分并加权平均；最终 `rank = rerank`，取消体量权重；40 条优化用例的 LLM-as-Judge 结果见 `doc/eval/judge40-v7b.md`。
+- **RAG 召回优化（2026-11-15）**：英文 `search_query` 归一化后由模型拆成同品类子问题（简单需求 1–2 条、复杂需求 3–4 条）；主 query 不再单独召回，子问题 query 路合计 0.8、BM25 0.2 做加权 RRF，取前 60；`repoSummary` 作为 `chunk_type=repo_summary` 参与向量召回；rerank 用 `summary + description + topics` 对子问题分别打分并加权平均；最终 `rank = rerank`，取消体量权重；40 条优化用例的 LLM-as-Judge 结果见 `doc/eval/judge40-final.md`。
 
 **已上线**
 
@@ -106,7 +106,7 @@ rank = 加权 rerank 分数
 | M5 | 深读与对比工作台：逐维度证据、结论建议、缓存与导出 | 已完成 |
 | M6 | 个性化沉淀：收藏、历史、画像、分享链接 | 已完成 |
 | M7 | 上线打磨：压测、成本看板、安全复检、可访问性 | 已完成 |
-| M8 | 检索精度提升：子问题多路召回、加权 RRF、repoSummary 索引、多 query rerank、LLM-as-Judge 评测 | 已上线 |
+| M8 | 检索精度提升：子问题多路召回、加权 RRF、repoSummary 索引、多 query rerank、LLM-as-Judge 评测 | 已上线并冻结 |
 
 ## 架构
 
@@ -411,7 +411,7 @@ GitStarts/
 - **Release 与多平台**：每天用 GitHub GraphQL 批量刷新 `latestRelease`（每批 50 个仓库，单次最多 1000 个）；`release_checked_at` 记录检查时间，无 Release 的仓库也记录，避免重复请求。`platforms` 由 topics / 描述 / 语言规则推导，供列表卡展示与匹配条件过滤使用。
 - **Qdrant**：`repo_chunks` 集合，dense 向量（默认 1024 维，cosine），按 Markdown 标题切成 400–800 tokens、重叠 80，payload 带 `repo_id` / `full_name` / `language` / `category` / `license` / `platform` / `stars` / `pushed_at` / `chunk_type`（`readme` / `manifest` / `repo_summary`）供过滤与追溯。point id 由 `full_name + chunk_hash` 生成 UUID，重复写入幂等。`repo_summary` 是仓库级档案摘要块，用于让产品型仓库不再依赖 README 中的偶然词面。低内存部署可开启 int8 标量量化：量化向量与 HNSW 图 `pinned` 常驻内存（约 54M + 7M），原始 float32 向量仍落盘，仅用于查询时对 Top-K 候选 rescore（`oversampling=2`），避免 2C2G 上 mmap 反复缺页读盘。
 - **缓存**：匹配结果 10 分钟、对比结果 7 天、对比 checkpoint 1 小时、榜单与元数据 5 分钟；索引 worker 用 Redis 锁 + 游标实现断点续跑。
-- **评测**：`llm-service/tests/eval/dataset40-optimized.jsonl`（40 条优化需求，语料内每条至少 6 个相关仓库）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；匹配评测只使用 LLM-as-Judge 指标（Hit@6 / Recall@6 / MRR@6，含 match 与 match+partial 两档），`python -m tests.eval.run_eval --dataset tests/eval/dataset40-optimized.jsonl --limit 6 --no-cache` 生成报告；最新结果见 `doc/eval/judge40-v7b.md`。`run_compare_eval` 生成对比报告。
+- **评测**：`llm-service/tests/eval/dataset40-optimized.jsonl`（40 条优化需求，语料内每条至少 6 个相关仓库）与 `compare_dataset.jsonl`（3 组真实需求盲测、覆盖 10 个热门项目）；匹配评测只使用 LLM-as-Judge 指标（Hit@6 / Recall@6 / MRR@6，含 match 与 match+partial 两档），`python -m tests.eval.run_eval --dataset tests/eval/dataset40-optimized.jsonl --limit 6 --no-cache` 生成报告；最新结果见 `doc/eval/judge40-final.md`。`run_compare_eval` 生成对比报告。
 
 ## 安全与合规
 
@@ -428,7 +428,7 @@ GitStarts/
 - [完整方案（v1.1，Python + LangGraph）](doc/技术方案/AI匹配与对比平台完整方案.md)
 - [四个差异化功能方案（F1–F4）](doc/四个差异化功能方案.md)：多周期趋势榜、AI 中文解读、健康度评分、Release 与安装包聚合
 - [技术方案（基线）](doc/技术方案/技术方案.md)：技术栈、表结构、采集引擎与阶段计划
-- [最新语义匹配评测报告](doc/eval/judge40-v7b.md)：40 条优化用例、LLM-as-Judge、Hit@6 / Recall@6 / MRR@6
+- [最新语义匹配评测报告](doc/eval/judge40-final.md)：40 条优化用例、LLM-as-Judge、Hit@6 / Recall@6 / MRR@6
 - [历史语义匹配基线](doc/eval/baseline.md)：旧数据集与历史指标，已不作为当前口径
 - [深度对比评测](doc/eval/compare.md)：10 个热门项目盲测数据集、证据覆盖率与信息不足率
 

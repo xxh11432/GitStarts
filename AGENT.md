@@ -314,4 +314,5 @@ cd llm-service; uv run python -m worker
 - 方案文档是"目标"，代码是"现状"；不要把规划写成已完成。
 - `doc/eval/baseline.md` 与 `doc/eval/compare.md` 只能由评测脚本覆盖生成；未运行就保留「未运行」，禁止估算或编造指标。
 - 改 prompt、召回策略、索引分块、契合度权重后，必须重新跑评测并在报告中说明变化。
+- RAG 召回链路已冻结在 commit `8c1c436`（2026-11-15），最终报告为 [judge40-final.md](doc/eval/judge40-final.md)；未获用户明确同意不得再改子问题拆分、召回权重、rerank 策略或最终排序。
 - README 的"当前进度 / API 概览 / 环境变量"是契约的一部分，功能变更后同步更新；其它章节不要无授权重写。
