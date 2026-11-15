@@ -428,8 +428,8 @@ GitStarts/
 - [完整方案（v1.1，Python + LangGraph）](doc/技术方案/AI匹配与对比平台完整方案.md)
 - [四个差异化功能方案（F1–F4）](doc/四个差异化功能方案.md)：多周期趋势榜、AI 中文解读、健康度评分、Release 与安装包聚合
 - [技术方案（基线）](doc/技术方案/技术方案.md)：技术栈、表结构、采集引擎与阶段计划
-- [最新语义匹配评测报告](doc/eval/judge40-final.md)：40 条优化用例、LLM-as-Judge、Hit@6 / Recall@6 / MRR@6
-- [历史语义匹配基线](doc/eval/baseline.md)：旧数据集与历史指标，已不作为当前口径
+- [最新语义匹配评测报告](doc/eval/judge40-final.md)：40 条优化用例、LLM-as-Judge、Hit@6 / Recall@6 / MRR@6，以及首版 → v7 → 最终版的迭代记录
+- [评测手册](doc/eval/eval.md)：当前唯一评测口径、基线与复现命令
 - [深度对比评测](doc/eval/compare.md)：10 个热门项目盲测数据集、证据覆盖率与信息不足率
 
 ## 贡献

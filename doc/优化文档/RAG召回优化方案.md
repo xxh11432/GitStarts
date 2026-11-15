@@ -130,7 +130,7 @@ P1 才考虑重建索引（chunk 上下文头、仓库 profile 向量）。如�
 | 过滤放宽次数 | L1 / L2 / L3 各触发多少次 | 结构化日志 |
 | 对比证据覆盖率 | 有证据单元格 / 总单元格 | `run_compare_eval.py` |
 
-> 当前 `doc/eval/baseline.md` 尚未填入真实指标。阶段 0 必须先跑出基线，后续所有“提升”都以该基线为参照，禁止估算。
+> 历史基线文档已随迭代清理，当前唯一基线为 `doc/eval/judge40-final.md`；后续所有“提升”都以该基线为参照，禁止估算。
 
 ---
 
@@ -429,7 +429,7 @@ full_name + description + topics + README 首段（300–500 tokens）
    cd llm-service
    uv run python -m tests.eval.run_eval --limit 10
    ```
-3. 把真实结果写入 `doc/eval/baseline.md`，冻结基线。
+3. 把真实结果写入 `doc/eval/judge40-final.md`，冻结基线。
 4. 在 `MatchRunner` 增加 `match_recall_stats` 日志。
 5. 给评测脚本增加 `--no-cache` 或清缓存步骤。
 
@@ -685,7 +685,7 @@ uv run python -m tests.eval.run_compare_eval
 | 平均 recall@10 | 0.317 | 0.444 |
 | 候选池 recall（池=60） | 0.579 | 0.762（旧池更大） |
 
-报告与数据：`doc/eval/judge-report-rrf60.md`、`pool-rrf60.jsonl`、`judge-cache-rrf60.json`。
+报告与数据：该轮中间报告已随迭代清理，结论并入 `doc/eval/judge40-final.md` 的迭代过程表。
 
 ### 12.4 变更文件
 
@@ -698,7 +698,7 @@ uv run python -m tests.eval.run_compare_eval
 | README 翻译 | `llm-service/worker/lang_detect.py`、`worker/translate.py`、`worker/pipeline.py` |
 | 关键词检索 | `backend/src/main/java/com/githubstars/service/RepoBm25Index.java`、`RepoService.java` |
 | 文档字段 | `deploy/init.sql`（`repo_documents.lang` / `lang_checked_at`） |
-| 评测 | `llm-service/tests/eval/run_eval.py`、`judge-report-rrf60.md` |
+| 评测 | `llm-service/tests/eval/run_eval.py`、`doc/eval/judge40-final.md` |
 
 ### 12.5 质量门禁
 
